@@ -1,0 +1,1146 @@
+<!doctype html>
+<html lang="en"><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Atlas AI CFO</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: HUD with three columns (departments | energy core + reply | decisions) over a command bar; the books open as a full sheet. Single dark look by design. */
+:root{
+  --bg:#03080f; --panel:rgba(8,24,46,.66); --panel-solid:#071528; --line:rgba(77,225,255,.20); --line-strong:rgba(77,225,255,.45);
+  --cyan:#4de1ff; --ice:#e4f5ff; --mute:#8aa6bf; --dim:#55708a;
+  --amber:#ffb547; --green:#53f2a6; --red:#ff6b7a;
+  --f-display:"Chakra Petch","Rajdhani",system-ui,sans-serif;
+  --f-body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{height:100%}
+body{margin:0;background:radial-gradient(ellipse at 50% 38%,#0b2140 0%,#06101f 50%,#02050a 100%) var(--bg);color:var(--ice);font-family:var(--f-body);font-size:14px;overflow:hidden}
+#bg{position:fixed;inset:0;z-index:0;pointer-events:none}
+button,input,select{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:2px solid var(--cyan);outline-offset:2px}
+
+.app{position:relative;z-index:1;height:100%;display:grid;grid-template-rows:auto auto minmax(0,1fr) auto;gap:10px;padding-block:10px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+
+/* top bar */
+.top{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;font-family:var(--f-display);letter-spacing:.08em}
+.brand{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
+.brand b{font-size:18px;letter-spacing:.32em;color:var(--cyan);text-shadow:0 0 12px rgba(77,225,255,.6)}
+.brand span{font-size:12px;color:var(--mute);letter-spacing:.12em;text-transform:uppercase}
+.top-r{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.clock{font-family:var(--f-mono);font-size:18px;color:var(--ice);font-variant-numeric:tabular-nums}
+.date{font-size:12px;color:var(--mute);text-transform:uppercase;letter-spacing:.14em}
+.badge{border:1px solid var(--line-strong);background:rgba(77,225,255,.08);padding:4px 10px;border-radius:999px;font-size:11px;letter-spacing:.14em;text-transform:uppercase;font-family:var(--f-display)}
+.badge.off{border-color:var(--dim);color:var(--mute);background:transparent}
+.badge .d{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--green);box-shadow:0 0 8px var(--green);margin-right:6px;vertical-align:middle}
+.badge.off .d{background:var(--dim);box-shadow:none}
+.tip{font-size:12.5px;color:var(--amber);text-align:center;margin-top:6px;max-width:640px}
+.btn{border:1px solid var(--line-strong);background:rgba(77,225,255,.1);padding:6px 12px;border-radius:4px;font-family:var(--f-display);letter-spacing:.12em;text-transform:uppercase;font-size:12px}
+.btn:hover{background:rgba(77,225,255,.2)}
+
+/* kpi strip */
+.kpis{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:8px}
+.kpi{border-top:1px solid var(--line-strong);padding:6px 2px 0;min-width:0}
+.kpi .l{font-family:var(--f-display);font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--mute);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.kpi .v{font-family:var(--f-mono);font-size:17px;font-variant-numeric:tabular-nums;color:var(--ice);margin-top:2px;white-space:nowrap}
+.kpi .v small{font-size:11px;color:var(--mute);margin-left:4px}
+.kpi.warn .v{color:var(--amber)}
+
+/* main */
+.main{display:grid;grid-template-columns:minmax(250px,300px) minmax(0,1fr) minmax(260px,330px);gap:14px;min-height:0}
+.panel{background:var(--panel);border:1px solid var(--line);display:flex;flex-direction:column;min-height:0;backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);
+  clip-path:polygon(0 0,calc(100% - 14px) 0,100% 14px,100% 100%,14px 100%,0 calc(100% - 14px));transition:opacity .8s ease, box-shadow .4s}
+.panel h2{margin:0;padding:10px 14px 8px;font-family:var(--f-display);font-size:12px;font-weight:600;letter-spacing:.28em;color:var(--cyan);display:flex;justify-content:space-between;align-items:baseline;border-bottom:1px solid var(--line)}
+.panel h2 small{font-size:10.5px;letter-spacing:.12em;color:var(--mute);font-weight:500}
+.scroll{overflow:auto;padding:6px 8px 10px;min-height:0;flex:1;scrollbar-width:thin;scrollbar-color:var(--line-strong) transparent}
+.left{animation:slideL .9s cubic-bezier(.2,.8,.2,1) 1.1s both}
+.right{animation:slideR .9s cubic-bezier(.2,.8,.2,1) 1.1s both}
+@keyframes slideL{from{transform:translateX(-40px);opacity:.15}to{transform:none;opacity:1}}
+@keyframes slideR{from{transform:translateX(40px);opacity:.15}to{transform:none;opacity:1}}
+.app.focus .panel,.app.focus .kpis{opacity:.16}
+.panel.flash{box-shadow:inset 0 0 0 1px var(--cyan),0 0 26px rgba(77,225,255,.35)}
+
+.dept{margin:8px 4px 4px;font-family:var(--f-display);font-size:10.5px;letter-spacing:.2em;text-transform:uppercase;color:var(--mute);display:flex;justify-content:space-between}
+.dept.new::after{content:"NEW";color:var(--bg);background:var(--cyan);padding:0 5px;border-radius:2px;letter-spacing:.1em;font-weight:700}
+.agent{display:grid;grid-template-columns:10px minmax(0,1fr);gap:9px;align-items:start;width:100%;text-align:left;background:transparent;border:0;padding:6px 6px;border-radius:3px}
+.agent:hover{background:rgba(77,225,255,.07)}
+.dot{width:7px;height:7px;border-radius:50%;margin-top:5px;background:var(--green);box-shadow:0 0 8px var(--green)}
+.dot.warn{background:var(--amber);box-shadow:0 0 8px var(--amber)}
+.agent .n{font-family:var(--f-mono);font-size:12px;color:var(--ice)}
+.agent .a{font-size:12px;color:var(--mute);line-height:1.35}
+.agent .a.warn{color:var(--amber)}
+
+/* decisions */
+.dec{border:1px solid var(--line);border-radius:3px;padding:9px 10px;margin:6px 2px;display:grid;gap:6px;transition:opacity .3s,border-color .3s}
+.dec .t{font-weight:600;font-size:13px;display:flex;justify-content:space-between;gap:8px}
+.dec .t span{font-family:var(--f-mono);font-weight:500;color:var(--cyan);white-space:nowrap}
+.dec .w{font-size:12px;color:var(--mute);line-height:1.4}
+.dec .who{font-family:var(--f-mono);font-size:10.5px;color:var(--dim)}
+.dec .b{display:flex;gap:6px;align-items:center}
+.dec .b button{border:1px solid var(--line-strong);background:transparent;padding:4px 10px;font-size:11px;border-radius:2px;letter-spacing:.1em;text-transform:uppercase;font-family:var(--f-display)}
+.dec .b .ok{background:rgba(83,242,166,.12);border-color:rgba(83,242,166,.5);color:var(--green)}
+.dec .b .ok:hover{background:rgba(83,242,166,.24)}
+.dec .b .later:hover{background:rgba(255,181,71,.14)}
+.dec.approved{border-color:rgba(83,242,166,.45)}
+.dec.later{opacity:.55;border-style:dashed}
+.chip-s{white-space:nowrap;font-family:var(--f-display);font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;padding:2px 6px;border-radius:2px}
+.chip-s.g{color:var(--green);background:rgba(83,242,166,.1)}
+.chip-s.a{color:var(--amber);background:rgba(255,181,71,.1)}
+.dec.hl{border-color:var(--cyan);box-shadow:0 0 14px rgba(77,225,255,.3)}
+
+/* center */
+.center{display:flex;flex-direction:column;align-items:center;min-height:0;min-width:0}
+.core{position:relative;flex:1;min-height:200px;width:100%}
+.core canvas{position:absolute;inset:0;width:100%;height:100%}
+.title{font-family:var(--f-display);font-weight:700;font-size:clamp(26px,3.4vw,40px);letter-spacing:.55em;padding-left:.55em;color:var(--ice);text-shadow:0 0 18px rgba(77,225,255,.7);margin-top:-6px}
+.sub{font-family:var(--f-display);font-size:12px;letter-spacing:.22em;text-transform:uppercase;color:var(--cyan);margin-top:2px;text-align:center}
+.sub.warn{color:var(--amber)}
+.reply{margin-top:12px;max-width:640px;width:100%;min-height:3.2em;font-size:15px;line-height:1.5;color:var(--ice);text-align:center;text-wrap:pretty}
+.reply .cur{display:inline-block;width:7px;height:1em;background:var(--cyan);vertical-align:-2px;margin-left:2px;animation:blink 1s steps(2) infinite}
+@keyframes blink{50%{opacity:0}}
+.card{max-width:640px;width:100%;margin-top:8px;max-height:30vh;overflow:auto}
+.mini{width:100%;border-collapse:collapse;font-family:var(--f-mono);font-size:12px;font-variant-numeric:tabular-nums}
+.mini th{font-family:var(--f-display);font-weight:500;letter-spacing:.12em;text-transform:uppercase;font-size:10.5px;color:var(--mute);text-align:left;border-bottom:1px solid var(--line);padding:4px 6px}
+.mini td{padding:4px 6px;border-bottom:1px solid rgba(77,225,255,.08)}
+.mini .r{text-align:right}
+.mini .warn{color:var(--amber)} .mini .good{color:var(--green)}
+
+/* command bar */
+.bar{display:grid;gap:8px;position:relative;z-index:25}
+.sheet-say{padding:8px 14px;border-bottom:1px solid var(--line);font-size:13.5px;color:var(--ice);min-height:1.5em}
+.sheet-say::before{content:"ATLAS  ";font-family:var(--f-display);letter-spacing:.2em;color:var(--cyan);font-size:11px}
+.ask{display:flex;gap:8px}
+.ask input{flex:1;min-width:0;background:rgba(5,16,32,.85);border:1px solid var(--line-strong);border-radius:3px;padding:11px 14px;font-size:15px;color:var(--ice)}
+.ask input::placeholder{color:var(--dim)}
+.ask button{border:1px solid var(--line-strong);background:rgba(77,225,255,.1);border-radius:3px;padding:0 14px;min-width:46px;font-family:var(--f-display);letter-spacing:.12em}
+.ask button:hover{background:rgba(77,225,255,.2)}
+#mic.on{background:rgba(255,107,122,.2);border-color:var(--red);color:var(--red);animation:pulse 1.2s infinite}
+@keyframes pulse{50%{box-shadow:0 0 0 6px rgba(255,107,122,.15)}}
+.chips{display:flex;gap:6px;flex-wrap:wrap}
+.chip{border:1px solid var(--line);background:rgba(8,24,46,.7);padding:6px 11px;border-radius:999px;font-size:12.5px;color:var(--ice)}
+.chip:hover{border-color:var(--cyan);color:var(--cyan)}
+.chip.k{border-color:var(--line-strong)}
+.chip.on{background:var(--cyan);color:var(--bg);border-color:var(--cyan)}
+
+.scan{position:fixed;left:0;right:0;top:-4px;height:2px;z-index:5;pointer-events:none;background:linear-gradient(90deg,transparent,var(--cyan),transparent);box-shadow:0 0 18px 4px rgba(77,225,255,.5);animation:scan 1.7s ease-in .25s 1 forwards}
+@keyframes scan{0%{top:-4px;opacity:1}90%{opacity:1}100%{top:100%;opacity:0}}
+
+/* books sheet */
+.sheet{position:fixed;inset:0;bottom:var(--bar-h,0px);z-index:20;background:rgba(2,6,12,.72);display:flex;padding:max(14px,env(safe-area-inset-top,0px)) max(16px,env(safe-area-inset-right,0px)) max(14px,env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px))}
+.sheet-in{margin:auto;width:100%;max-width:1180px;height:100%;background:var(--panel-solid);border:1px solid var(--line-strong);display:flex;flex-direction:column;min-height:0;box-shadow:0 0 60px rgba(77,225,255,.15)}
+.sheet-h{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.sheet-h h3{margin:0;font-family:var(--f-display);letter-spacing:.24em;font-size:13px;color:var(--cyan);margin-right:auto}
+.tabs{display:flex;gap:4px;flex-wrap:wrap;padding:8px 14px 0;border-bottom:1px solid var(--line)}
+.tab{background:transparent;border:1px solid transparent;border-bottom:0;padding:7px 12px;font-family:var(--f-display);font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--mute)}
+.tab .step{color:var(--dim);margin-right:6px;font-family:var(--f-mono)}
+.tab[aria-selected="true"]{color:var(--ice);border-color:var(--line-strong);background:rgba(77,225,255,.08)}
+.sheet-b{overflow:auto;padding:14px;min-height:0;flex:1}
+.sheet-b h4{font-family:var(--f-display);font-weight:600;font-size:14px;letter-spacing:.08em;margin:4px 0 2px;text-align:center}
+.sheet-b .cap{text-align:center;color:var(--mute);font-size:12px;margin-bottom:10px}
+.xs{overflow-x:auto}
+.acct{width:100%;border-collapse:collapse;font-family:var(--f-mono);font-size:12.5px;font-variant-numeric:tabular-nums;min-width:560px}
+.acct th{font-family:var(--f-display);font-weight:600;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--cyan);text-align:left;padding:6px 8px;border-top:1px solid var(--line-strong);border-bottom:1px solid var(--line-strong)}
+.acct td{padding:5px 8px;vertical-align:top;border-bottom:1px solid rgba(77,225,255,.07)}
+.acct .r{text-align:right;white-space:nowrap}
+.acct .sep{border-left:1px solid var(--line-strong)}
+.acct tfoot td,.acct tr.tot td{border-top:1px solid var(--line-strong);border-bottom:3px double var(--line-strong);font-weight:600}
+.acct .ind{padding-left:34px}
+.acct .narr{color:var(--mute);font-style:italic;font-family:var(--f-body);font-size:12px}
+.acct .muted{color:var(--mute)}
+.acct .subl{display:flex;justify-content:space-between;gap:12px;color:var(--mute);font-size:11.5px;padding-left:12px}
+.tag{font-family:var(--f-display);font-size:10px;letter-spacing:.12em;padding:1px 5px;border-radius:2px;margin-left:6px;vertical-align:1px}
+.tag.adj{background:rgba(77,225,255,.14);color:var(--cyan)}
+.tag.flag{background:rgba(255,181,71,.15);color:var(--amber)}
+.tag.you{background:rgba(83,242,166,.13);color:var(--green)}
+.status{display:flex;gap:10px;align-items:center;justify-content:center;flex-wrap:wrap;margin:12px 0 4px;font-family:var(--f-display);letter-spacing:.1em;font-size:12px;text-transform:uppercase}
+.pill{padding:4px 10px;border-radius:999px;border:1px solid}
+.pill.g{color:var(--green);border-color:rgba(83,242,166,.5)}
+.pill.a{color:var(--amber);border-color:rgba(255,181,71,.5)}
+.form{display:grid;grid-template-columns:130px minmax(0,1.4fr) minmax(0,1fr) minmax(0,1fr) 120px auto;gap:8px;align-items:end;margin-bottom:14px;padding:10px;border:1px dashed var(--line-strong)}
+.form label{display:grid;gap:4px;font-family:var(--f-display);font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--mute);min-width:0}
+.form input,.form select{background:#04101f;border:1px solid var(--line-strong);padding:7px 8px;border-radius:2px;font-family:var(--f-body);font-size:13px;text-transform:none;letter-spacing:0;min-width:0;width:100%}
+.form .hint{grid-column:1/-1;font-size:12px;color:var(--mute);font-family:var(--f-body);letter-spacing:0;text-transform:none}
+.form .hint.err{color:var(--red)}
+.adjs{display:grid;gap:10px}
+.adjc{border:1px solid var(--line);padding:10px 12px;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px 14px;align-items:center}
+.adjc h5{margin:0;font-size:14px;font-weight:600}
+.adjc p{margin:0;color:var(--mute);font-size:12.5px;grid-column:1}
+.adjc code{grid-column:1;font-family:var(--f-mono);font-size:12px;color:var(--ice)}
+.adjc .b{grid-row:1/4;grid-column:2;display:flex;flex-direction:column;gap:6px;align-items:flex-end}
+.row2{display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap;margin-bottom:10px}
+.row2 select{background:#04101f;border:1px solid var(--line-strong);padding:7px 8px;border-radius:2px}
+.flow{display:flex;gap:6px;flex-wrap:wrap;align-items:center;justify-content:center;font-family:var(--f-display);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--mute);margin:2px 0 12px}
+.flow b{color:var(--cyan);font-weight:600}
+.split{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+.toast{position:fixed;left:50%;bottom:calc(18px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--panel-solid);border:1px solid var(--cyan);padding:8px 14px;font-size:13px;z-index:30;max-width:calc(100% - 32px)}
+
+@media (max-width:980px){
+  body{overflow:auto}
+  .app{height:auto;min-height:100%;grid-template-rows:auto}
+  .main{grid-template-columns:minmax(0,1fr);}
+  .center{order:-1}
+  .core{flex:none;height:300px}
+  .panel{max-height:none}
+  .scroll{overflow:visible}
+  .kpis{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .bar{position:sticky;bottom:0;background:linear-gradient(transparent,var(--bg) 30%);padding:12px 0 calc(6px + env(safe-area-inset-bottom,0px))}
+  .form{grid-template-columns:1fr 1fr}
+  .split{grid-template-columns:minmax(0,1fr)}
+  .card{max-height:none}
+}
+@media (max-width:520px){
+  .kpis{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .core{height:250px}
+  .brand span{display:none}
+  .chips{flex-wrap:nowrap;overflow-x:auto;padding-bottom:2px}
+  .chip{white-space:nowrap}
+}
+@media (prefers-reduced-motion:reduce){
+  .left,.right,.scan,.reply .cur,#mic.on{animation:none}
+  .scan{display:none}
+}
+</style>
+
+<canvas id="bg" aria-hidden="true"></canvas>
+<div class="scan" aria-hidden="true"></div>
+
+<div class="app" id="app">
+  <header class="top">
+    <div class="brand"><b>ATLAS</b><span id="co">AI CFO · Orbit Traders · FY 2025-26 · example books</span></div>
+    <div class="top-r">
+      <span class="clock" id="clock">--:--:--</span>
+      <span class="date" id="date"></span>
+      <button class="badge" id="voice" aria-pressed="true"><span class="d"></span>Voice: ON</button>
+      <span class="badge off" id="brain" title="Who answers open questions"><span class="d"></span>Brain: built-in</span>
+      <button class="btn" id="openBooks">Books</button>
+    </div>
+  </header>
+
+  <section class="kpis" id="kpis" aria-label="Key figures"></section>
+
+  <main class="main">
+    <aside class="panel left" id="left" aria-label="Systems">
+      <h2>SYSTEMS <small id="agentCount"></small></h2>
+      <div class="scroll" id="agents"></div>
+    </aside>
+
+    <section class="center">
+      <div class="core" id="coreWrap"><canvas id="core" aria-hidden="true"></canvas></div>
+      <div class="title">ATLAS</div>
+      <div class="sub" id="sub">Initialising</div>
+      <div class="reply" id="reply" aria-live="polite"></div>
+      <div class="card" id="card"></div>
+      <div class="tip" id="tip" hidden></div>
+    </section>
+
+    <aside class="panel right" id="right" aria-label="Waiting on you">
+      <h2>WAITING ON YOU <small id="waitCount"></small></h2>
+      <div class="scroll" id="queue"></div>
+    </aside>
+  </main>
+
+  <footer class="bar">
+    <form class="ask" id="askForm" autocomplete="off">
+      <input id="ask" placeholder="Ask Atlas…  e.g. “record sale 25000 on credit”" aria-label="Ask Atlas">
+      <button type="button" id="mic" aria-label="Talk to Atlas" title="Hands-free: Atlas listens, answers aloud, then listens again">TALK</button>
+      <button type="submit" aria-label="Send">SEND</button>
+    </form>
+    <div class="chips" id="chips">
+      <button class="chip" data-cmd="good morning atlas">Morning brief</button>
+      <button class="chip" data-cmd="status report">Status</button>
+      <button class="chip" data-cmd="what's waiting on me">What's waiting</button>
+      <button class="chip" data-cmd="focus mode" id="focusChip">Focus mode</button>
+      <button class="chip k" data-cmd="trial balance">Trial balance</button>
+      <button class="chip k" data-cmd="post all adjustments">Post adjustments</button>
+      <button class="chip k" data-cmd="final accounts">Final accounts</button>
+      <button class="chip k" data-cmd="cash position">Cash</button>
+      <button class="chip k" data-cmd="help">Help</button>
+    </div>
+  </footer>
+</div>
+
+<div class="sheet" id="books" hidden role="dialog" aria-modal="true" aria-label="Books of account">
+  <div class="sheet-in">
+    <div class="sheet-h">
+      <h3>ACCOUNTING · ORBIT TRADERS · FY 2025-26</h3>
+      <button class="btn" id="resetDemo" title="Clear your entries and approvals">Reset demo</button>
+      <button class="btn" id="closeBooks">Close</button>
+    </div>
+    <div class="sheet-say" id="sheetSay" aria-live="off"></div>
+    <div class="tabs" role="tablist" id="tabs">
+      <button class="tab" role="tab" data-tab="journal"><span class="step">1</span>Journal</button>
+      <button class="tab" role="tab" data-tab="ledger"><span class="step">2</span>Ledger</button>
+      <button class="tab" role="tab" data-tab="tb"><span class="step">3</span>Trial balance</button>
+      <button class="tab" role="tab" data-tab="adj"><span class="step">4</span>Adjustments</button>
+      <button class="tab" role="tab" data-tab="final"><span class="step">5</span>Final accounts</button>
+    </div>
+    <div class="sheet-b" id="sheetBody"></div>
+  </div>
+</div>
+
+<script>
+"use strict";
+/* ============================== CONFIG ============================== */
+const CFG = { user:"Mazhar", company:"Orbit Traders", period:"FY 2025-26", yearEnd:"31 March 2026", cur:"₹" };
+const STORE = "atlas-books-v1";
+
+/* ============================== CHART OF ACCOUNTS ==============================
+   t: asset | liability | equity | income | expense
+   s: which final account a nominal account closes to (trading | pl)
+   g: balance sheet group; contra: the account it is shown against */
+const ACC = {
+  capital:{n:"Capital",t:"equity"},
+  drawings:{n:"Drawings",t:"equity"},
+  loan:{n:"Bank Loan (10%)",t:"liability",g:"Long-term liabilities"},
+  creditors:{n:"Creditors",t:"liability",g:"Current liabilities"},
+  outsal:{n:"Outstanding Salaries",t:"liability",g:"Current liabilities"},
+  intpay:{n:"Interest Payable",t:"liability",g:"Current liabilities"},
+  furniture:{n:"Furniture & Equipment",t:"asset",g:"Fixed assets"},
+  accdep:{n:"Accumulated Depreciation",t:"asset",g:"Fixed assets",contra:"furniture"},
+  stock:{n:"Closing Stock",t:"asset",g:"Current assets"},
+  debtors:{n:"Debtors",t:"asset",g:"Current assets"},
+  provdd:{n:"Provision for Doubtful Debts",t:"asset",g:"Current assets",contra:"debtors"},
+  prepaid:{n:"Prepaid Rent",t:"asset",g:"Current assets"},
+  bank:{n:"Bank",t:"asset",g:"Current assets"},
+  cash:{n:"Cash",t:"asset",g:"Current assets"},
+  sales:{n:"Sales",t:"income",s:"trading"},
+  stocktr:{n:"Closing Stock (Trading)",t:"income",s:"trading"},
+  purchases:{n:"Purchases",t:"expense",s:"trading"},
+  salaries:{n:"Salaries",t:"expense",s:"pl"},
+  rent:{n:"Rent",t:"expense",s:"pl"},
+  electricity:{n:"Electricity",t:"expense",s:"pl"},
+  advertising:{n:"Advertising",t:"expense",s:"pl"},
+  office:{n:"Office Expenses",t:"expense",s:"pl"},
+  interest:{n:"Interest on Loan",t:"expense",s:"pl"},
+  depreciation:{n:"Depreciation",t:"expense",s:"pl"},
+  baddebts:{n:"Bad & Doubtful Debts",t:"expense",s:"pl"},
+};
+const KEYS = Object.keys(ACC);
+const LF = k => KEYS.indexOf(k) + 1;  // ledger folio
+
+const E = (id,date,narr,dr,cr,amt,extra={}) => ({id,date,narr,lines:[{a:dr,dr:amt,cr:0},{a:cr,dr:0,cr:amt}],...extra});
+
+/* ============================== SAMPLE BOOKS (example data) ============================== */
+const BASE = [
+  E("J01","2025-04-01","Capital introduced by the proprietor","bank","capital",1000000),
+  E("J02","2025-04-03","Term loan taken from bank at 10% p.a.","bank","loan",300000),
+  E("J03","2025-04-05","Furniture and display racks purchased","furniture","bank",240000),
+  E("J04","2025-04-06","Cash withdrawn from bank for office use","cash","bank",100000),
+  E("J05","2025-04-08","Rent paid in advance for 15 months","rent","bank",120000),
+  E("J06","2025-05-12","Goods purchased on credit from Kaveri Wholesale and Deccan Packaging","purchases","creditors",400000),
+  E("J07","2025-06-15","Goods purchased for cash","purchases","cash",60000),
+  E("J08","2025-09-30","Goods sold on credit to Sharma Retail, Lotus Mart and Greenleaf Stores","debtors","sales",750000),
+  E("J09","2025-10-20","Cash sales","cash","sales",180000),
+  E("J10","2025-11-25","Cash received from debtors","bank","debtors",390000),
+  E("J11","2025-12-10","Paid Kaveri Wholesale on account","creditors","bank",280000),
+  E("J12","2026-01-31","Electricity bills paid for the year","electricity","cash",18000),
+  E("J13","2026-02-15","Salaries paid, April to February","salaries","bank",165000),
+  E("J14","2026-02-28","Loan interest paid for 9 months","interest","bank",22500),
+  E("J15","2026-03-05","Advertising campaign for spring range","advertising","bank",25000),
+  E("J16","2026-03-12","Cash withdrawn by proprietor for personal use","drawings","cash",30000),
+  E("J17","2026-03-20","Laptop bought for the accounts desk","office","bank",65000),
+];
+
+/* Decisions queue. Approving one posts its entry; adjustments are the year-end step. */
+const QUEUE = [
+  {id:"A1",kind:"adj",agent:"journal-review",title:"Reclassify laptop to fixed assets",amt:65000,fixes:"J17",
+   why:"J17 charged a ₹65,000 laptop to Office Expenses. It is a capital item, so it belongs in Furniture & Equipment.",
+   entry:E("A1","2026-03-31","Laptop reclassified from Office Expenses to Furniture & Equipment","furniture","office",65000,{adj:true})},
+  {id:"A2",kind:"adj",agent:"adjustments",title:"Record closing stock",amt:110000,
+   why:"Physical stock count on 31 March 2026, valued at cost.",
+   entry:E("A2","2026-03-31","Closing stock brought into books","stock","stocktr",110000,{adj:true})},
+  {id:"A3",kind:"adj",agent:"adjustments",title:"Depreciation at 10% on furniture",amt:24000,
+   why:"Straight line at 10% on the ₹2,40,000 bought in April.",
+   entry:E("A3","2026-03-31","Depreciation at 10% on furniture","depreciation","accdep",24000,{adj:true})},
+  {id:"A4",kind:"adj",agent:"adjustments",title:"Carry forward prepaid rent",amt:24000,
+   why:"Rent was paid for 15 months. Three months (₹24,000) belong to next year.",
+   entry:E("A4","2026-03-31","Rent paid in advance for 3 months","prepaid","rent",24000,{adj:true})},
+  {id:"A5",kind:"adj",agent:"adjustments",title:"Accrue March salary",amt:15000,
+   why:"March salary of ₹15,000 was unpaid at year end.",
+   entry:E("A5","2026-03-31","Salary outstanding for March","salaries","outsal",15000,{adj:true})},
+  {id:"A6",kind:"adj",agent:"adjustments",title:"Accrue loan interest",amt:7500,
+   why:"10% on ₹3,00,000 is ₹30,000 for the year. Only ₹22,500 has been paid.",
+   entry:E("A6","2026-03-31","Interest on loan due but not paid","interest","intpay",7500,{adj:true})},
+  {id:"A7",kind:"adj",agent:"adjustments",title:"Provide 2% for doubtful debts",amt:7200,
+   why:"2% of ₹3,60,000 debtors. Greenleaf Stores is 72 days overdue.",
+   entry:E("A7","2026-03-31","Provision for doubtful debts at 2% of debtors","baddebts","provdd",7200,{adj:true})},
+  {id:"P1",kind:"pay",agent:"payables",title:"Supplier payment run",amt:80000,
+   why:"Pay Kaveri Wholesale ₹80,000, due 5 April. Bank balance covers it 8 times over.",
+   entry:E("P1","2026-03-31","Paid Kaveri Wholesale (payment run)","creditors","bank",80000)},
+];
+
+const DEBTORS = [["Sharma Retail",145000,45],["Lotus Mart",120000,18],["Greenleaf Stores",95000,72]];
+const CREDITORS = [["Kaveri Wholesale",80000,"5 Apr"],["Deccan Packaging",40000,"18 Apr"]];
+const BUDGET = {sales:900000,purchases:450000,salaries:180000,rent:96000,electricity:14400,advertising:15000,interest:30000};
+
+/* ============================== STATE ============================== */
+let S = {user:[], ap:{}, seq:1, name:CFG.user};
+function load(){ try{ const v = JSON.parse(localStorage.getItem(STORE)||"null"); if(v && Array.isArray(v.user)) S = Object.assign(S,v); }catch(e){} CFG.user = S.name||CFG.user; }
+function save(){ try{ localStorage.setItem(STORE, JSON.stringify(S)); }catch(e){} }
+load();
+const st = id => S.ap[id] || "pending";
+
+/* ============================== ENGINE ============================== */
+const byDate = (a,b) => a.date<b.date?-1:a.date>b.date?1:(a.id<b.id?-1:1);
+function postedEntries(all=false){
+  const list = [...BASE, ...S.user];
+  for(const q of QUEUE) if(all ? q.kind==="adj" || st(q.id)==="approved" : st(q.id)==="approved") list.push(q.entry);
+  return list.sort(byDate);
+}
+function buildLedger(entries){
+  const L = {}; for(const k of KEYS) L[k] = {dr:0,cr:0,rows:[]};
+  for(const e of entries) for(const l of e.lines){
+    const other = e.lines.filter(x => x!==l && (l.dr ? x.cr : x.dr));
+    const nm = other.length===1 ? ACC[other[0].a].n : "Sundries";
+    L[l.a].dr += l.dr; L[l.a].cr += l.cr;
+    L[l.a].rows.push({date:e.date,id:e.id,name:nm,dr:l.dr,cr:l.cr});
+  }
+  for(const k of KEYS) L[k].bal = L[k].dr - L[k].cr;
+  return L;
+}
+function trialBalance(L){
+  const rows = KEYS.filter(k=>Math.abs(L[k].bal)>0.005).map(k=>({k,dr:L[k].bal>0?L[k].bal:0,cr:L[k].bal<0?-L[k].bal:0}));
+  const dr = rows.reduce((s,r)=>s+r.dr,0), cr = rows.reduce((s,r)=>s+r.cr,0);
+  return {rows,dr,cr,ok:Math.abs(dr-cr)<0.5};
+}
+const sum = a => a.reduce((s,x)=>s+x[1],0);
+function finals(L){
+  const B = k => L[k].bal;
+  const nominal = s => KEYS.filter(k=>ACC[k].s===s && Math.abs(B(k))>0.005);
+  const trDr = nominal("trading").filter(k=>B(k)>0).map(k=>[ACC[k].n,B(k)]);
+  const trCr = nominal("trading").filter(k=>B(k)<0).map(k=>[k==="stocktr"?"Closing Stock":ACC[k].n,-B(k)]);
+  const gp = sum(trCr) - sum(trDr);
+  const plDr = nominal("pl").filter(k=>B(k)>0).map(k=>[ACC[k].n,B(k)]);
+  const plCr = nominal("pl").filter(k=>B(k)<0).map(k=>[ACC[k].n,-B(k)]);
+  const np = gp + sum(plCr) - sum(plDr);
+  const cap = -B("capital"), draw = B("drawings"), capClose = cap + np - draw;
+  const liab = {}; for(const k of KEYS) if(ACC[k].t==="liability" && Math.abs(B(k))>0.005) (liab[ACC[k].g] ||= []).push([ACC[k].n,-B(k)]);
+  const assets = {};
+  for(const k of KEYS){
+    const a = ACC[k]; if(a.t!=="asset" || a.contra) continue;
+    const contras = KEYS.filter(c=>ACC[c].contra===k && Math.abs(B(c))>0.005);
+    const net = B(k) + contras.reduce((s,c)=>s+B(c),0);
+    if(Math.abs(B(k))<0.005 && !contras.length) continue;
+    (assets[a.g] ||= []).push({label:a.n,amt:net,gross:B(k),less:contras.map(c=>["Less: "+ACC[c].n,-B(c)])});
+  }
+  const totL = capClose + Object.values(liab).flat().reduce((s,x)=>s+x[1],0);
+  const totA = Object.values(assets).flat().reduce((s,x)=>s+x.amt,0);
+  const ca = (assets["Current assets"]||[]).reduce((s,x)=>s+x.amt,0);
+  const cl = (liab["Current liabilities"]||[]).reduce((s,x)=>s+x[1],0);
+  return {trDr,trCr,gp,plDr,plCr,np,cap,draw,capClose,liab,assets,totL,totA,ok:Math.abs(totL-totA)<0.5,ca,cl,sales:-B("sales")};
+}
+function review(entries){
+  const flags = [];
+  const capWords = /\b(laptop|computer|furniture|machine|machinery|equipment|printer|vehicle|rack)/i;
+  for(const e of entries){
+    if(e.adj) continue;
+    const fixed = QUEUE.some(q=>q.fixes===e.id && st(q.id)==="approved");
+    for(const l of e.lines) if(l.dr && ACC[l.a].t==="expense" && capWords.test(e.narr) && !fixed)
+      flags.push({id:e.id,msg:`${e.id}: capital item charged to ${ACC[l.a].n}`});
+    if(!e.narr || e.narr.trim().length<3) flags.push({id:e.id,msg:`${e.id}: narration missing`});
+    const dr = e.lines.reduce((s,l)=>s+l.dr,0), cr = e.lines.reduce((s,l)=>s+l.cr,0);
+    if(Math.abs(dr-cr)>0.5) flags.push({id:e.id,msg:`${e.id}: debits and credits differ`});
+  }
+  const seen = {};
+  for(const e of entries){ if(e.adj) continue; const sig = e.date+e.lines.map(l=>l.a+l.dr+"/"+l.cr).join("|"); if(seen[sig]) flags.push({id:e.id,msg:`${e.id}: looks like a duplicate of ${seen[sig]}`}); else seen[sig]=e.id; }
+  return flags;
+}
+function snapshot(){
+  const entries = postedEntries(); const L = buildLedger(entries);
+  const TB = trialBalance(L), F = finals(L);
+  const Lall = buildLedger(postedEntries(true)); const Fall = finals(Lall);
+  const pendAdj = QUEUE.filter(q=>q.kind==="adj" && st(q.id)!=="approved");
+  const pending = QUEUE.filter(q=>st(q.id)==="pending");
+  const flags = review(entries);
+  const cashBank = L.cash.bal + L.bank.bal;
+  const opex = KEYS.filter(k=>ACC[k].s==="pl" && !["depreciation","baddebts"].includes(k)).reduce((s,k)=>s+Math.max(0,L[k].bal),0) + Math.max(0,L.purchases.bal);
+  const burn = opex/12;
+  return {entries,L,TB,F,Fall,pendAdj,pending,flags,cashBank,burn,runway:burn?cashBank/burn:0};
+}
+
+/* ============================== FORMATTING ============================== */
+const num = n => (n<0?"(":"") + Math.round(Math.abs(n)).toLocaleString("en-IN") + (n<0?")":"");
+const money = n => (n<0?"−":"") + CFG.cur + Math.round(Math.abs(n)).toLocaleString("en-IN");
+const lakh = n => CFG.cur + (Math.abs(n)>=1e5 ? (n/1e5).toFixed(2).replace(/\.?0+$/,"")+"L" : Math.round(n).toLocaleString("en-IN"));
+const pct = n => (n*100).toFixed(1).replace(/\.0$/,"")+"%";
+const dmy = d => new Date(d+"T00:00:00").toLocaleDateString("en-GB",{day:"numeric",month:"short",year:"numeric"});
+const esc = s => String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const plural = (n,w) => `${n} ${w}${n===1?"":"s"}`;
+const NUMW = ["zero","one","two","three","four","five","six","seven","eight","nine","ten","eleven","twelve"];
+const words = n => NUMW[n] ?? String(n);
+const cap1 = s => s.charAt(0).toUpperCase()+s.slice(1);
+
+/* ============================== VOICE ============================== */
+let voiceOn = true, speaking = false, level = 0, voices = [];
+const synth = "speechSynthesis" in window ? window.speechSynthesis : null;
+function loadVoices(){ if(synth) voices = synth.getVoices(); }
+if(synth){ loadVoices(); synth.onvoiceschanged = loadVoices; }
+function pickVoice(){
+  const gb = voices.filter(v=>/en-GB/i.test(v.lang));
+  return gb.find(v=>/Daniel|Arthur|George|Male|Ryan|Oliver/i.test(v.name)) || gb[0] || voices.find(v=>/^en/i.test(v.lang)) || null;
+}
+function speakable(t){
+  return t.replace(/₹\s?([\d,]+(?:\.\d+)?)/g,(m,d)=>{ const n=+d.replace(/,/g,""); return n>=1e5 ? `${(n/1e5).toFixed(2).replace(/\.?0+$/,"")} lakh rupees` : `${n.toLocaleString("en-GB")} rupees`; })
+          .replace(/\bP&L\b/g,"P and L").replace(/\bDr\b/g,"debit").replace(/\bCr\b/g,"credit").replace(/\bFY 2025-26\b/g,"financial year twenty-five twenty-six");
+}
+let typeTimer = null;
+let CAPTURE = null;
+function say(text, cardHTML=""){
+  if(CAPTURE){ CAPTURE.push(text); if(cardHTML) document.getElementById("card").innerHTML = cardHTML; return; }
+  const el = document.getElementById("reply");
+  document.getElementById("card").innerHTML = cardHTML;
+  clearInterval(typeTimer); el.textContent = "";
+  const cur = document.createElement("span"); cur.className = "cur";
+  let i = 0; speaking = true;
+  const step = reduceMotion ? text.length : 2;
+  typeTimer = setInterval(()=>{
+    i = Math.min(text.length, i+step);
+    el.textContent = text.slice(0,i); el.appendChild(cur);
+    if(i>=text.length){ clearInterval(typeTimer); setTimeout(()=>{ cur.remove(); if(!synthActive) speaking=false; }, 600); }
+  }, 18);
+  if(voiceOn && synth){
+    try{
+      synth.cancel();
+      const u = new SpeechSynthesisUtterance(speakable(text));
+      const v = pickVoice(); if(v) u.voice = v;
+      u.lang = "en-GB"; u.pitch = .82; u.rate = 1;
+      u.onstart = ()=>{ synthActive = true; speaking = true; };
+      u.onboundary = ()=>{ level = 1; };
+      u.onend = u.onerror = ()=>{ synthActive = false; speaking = false; afterSpeech(); };
+      synth.speak(u);
+    }catch(e){}
+  }
+}
+let synthActive = false;
+
+/* ============================== UI RENDER ============================== */
+const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+let SNAP = snapshot();
+
+function agentsModel(s){
+  const pa = s.pendAdj.length, fl = s.flags.length;
+  const g = (id,cmd,warn,act) => ({id,cmd,warn,act});
+  return [
+    {d:"Accounting",isNew:true,list:[
+      g("journal-entry","show journal",false,`${s.entries.length} entries posted for ${CFG.period}`),
+      g("ledger","show ledger",false,`${KEYS.filter(k=>s.L[k].rows.length).length} ledger accounts posted and balanced`),
+      g("trial-balance","trial balance",!s.TB.ok,s.TB.ok?`Agrees: Dr = Cr = ${money(s.TB.dr)}`:`Out by ${money(s.TB.dr-s.TB.cr)}`),
+      g("adjustments","show adjustments",pa>0,pa?`${plural(pa,"year-end adjustment")} waiting on you`:"All year-end adjustments posted"),
+      g("final-accounts","final accounts",pa>0,pa?`Draft ready. Net profit ${money(s.F.np)} before adjustments`:`Final. Net profit ${money(s.F.np)}, balance sheet agrees`),
+      g("journal-review","review journals",fl>0,fl?s.flags[0].msg:`${s.entries.length} entries reviewed, no flags`),
+    ]},
+    {d:"FP&A",list:[
+      g("forecast-model","forecast next year",false,`FY 2026-27 sales forecast ${lakh(s.F.sales*1.12)} at 12% growth`),
+      g("variance-analysis","budget variance",true,"Advertising 67% over budget"),
+      g("scenario-planner","what if sales drop 10%",false,"Ready: sales and cost scenarios"),
+      g("kpi-tracker","show kpis",false,`Gross margin ${pct(s.F.gp/s.F.sales)}, current ratio ${(s.F.ca/Math.max(1,s.F.cl)).toFixed(2)}`),
+    ]},
+    {d:"Cash & Treasury",list:[
+      g("cash-forecast","cash position",false,`${words(Math.floor(s.runway))} months of runway at current spend`),
+      g("cash-alerts","cash alerts",false,`No shortfall flagged. Floor set at ${lakh(200000)}`),
+      g("bank-feed","status report",true,"Example: bank feed token expired, reconnect needed"),
+    ]},
+    {d:"Revenue & Spend",list:[
+      g("collections","collections",true,"Greenleaf Stores 72 days overdue, ₹95,000"),
+      g("payables","payables",st("P1")==="pending",st("P1")==="approved"?"Kaveri Wholesale paid ₹80,000":"Payment run of ₹80,000 ready to approve"),
+      g("expense-audit","expense audit",false,"Salaries are the largest cost line"),
+    ]},
+    {d:"Tax & Controls",list:[
+      g("tax-calendar","tax calendar",false,nextTax()[0].label+" due "+nextTax()[0].when),
+      g("controls-review","controls review",fl>0,fl?`${plural(fl,"control exception")} open`:"Controls clear"),
+    ]},
+    {d:"CFO Office",list:[
+      g("cfo-briefing","good morning atlas",false,"Morning brief ready"),
+      g("board-pack","board pack",false,`Board pack drafted for ${CFG.period}`),
+    ]},
+  ];
+}
+function renderAgents(){
+  const m = agentsModel(SNAP); let h = "", n = 0, w = 0;
+  for(const d of m){
+    h += `<div class="dept${d.isNew?" new":""}">${esc(d.d)}</div>`;
+    for(const a of d.list){ n++; if(a.warn) w++;
+      h += `<button class="agent" data-cmd="${esc(a.cmd)}"><span class="dot${a.warn?" warn":""}"></span><span><span class="n">${esc(a.id)}</span><br><span class="a${a.warn?" warn":""}">${esc(a.act)}</span></span></button>`;
+    }
+  }
+  document.getElementById("agents").innerHTML = h;
+  document.getElementById("agentCount").textContent = `${n} AGENTS · ${w} AMBER`;
+}
+function renderQueue(){
+  let h = "";
+  for(const q of QUEUE){
+    const s = st(q.id);
+    h += `<div class="dec ${s}" data-id="${q.id}">
+      <div class="t">${esc(q.title)}<span>${money(q.amt)}</span></div>
+      <div class="w">${esc(q.why)}</div>
+      <div class="b">${s==="approved" ? `<span class="chip-s g">Approved · posted</span><button data-act="undo">Undo</button>`
+        : s==="later" ? `<span class="chip-s a">Later</span><button data-act="undo">Undo</button>`
+        : `<button class="ok" data-act="approve">Approve</button><button class="later" data-act="later">Later</button>`}
+        <span class="who" style="margin-left:auto">${esc(q.agent)}</span></div></div>`;
+  }
+  document.getElementById("queue").innerHTML = h;
+  const p = SNAP.pending.length;
+  document.getElementById("waitCount").textContent = `${p} PENDING`;
+}
+function renderKpis(){
+  const s = SNAP, F = s.F;
+  const dd = F.sales ? (s.L.debtors.bal / F.sales * 365) : 0;
+  const items = [
+    ["Cash & bank", lakh(s.cashBank)],
+    ["Revenue", lakh(F.sales)],
+    ["Gross profit", lakh(F.gp), `<small>${pct(F.gp/F.sales)}</small>`],
+    ["Net profit", lakh(F.np), s.pendAdj.length?`<small>draft</small>`:`<small>${pct(F.np/F.sales)}</small>`, s.pendAdj.length>0],
+    ["Current ratio", (F.ca/Math.max(1,F.cl)).toFixed(2)],
+    ["Debtor days", Math.round(dd), "", dd>60],
+  ];
+  document.getElementById("kpis").innerHTML = items.map(([l,v,x="",w])=>`<div class="kpi${w?" warn":""}"><div class="l">${l}</div><div class="v">${v}${x}</div></div>`).join("");
+}
+function setSub(){
+  const el = document.getElementById("sub");
+  if(focus){ el.textContent = "Focus mode · motion calmed"; el.className="sub"; return; }
+  const p = SNAP.pending.length;
+  el.textContent = p ? `Online · ${plural(p,"decision")} waiting` : "Online · all systems normal";
+  el.className = "sub" + (SNAP.TB.ok ? "" : " warn");
+}
+function refresh(){ SNAP = snapshot(); renderAgents(); renderQueue(); renderKpis(); setSub(); if(!books.hidden) renderTab(); save(); }
+
+/* ============================== BOOKS SHEET ============================== */
+const books = document.getElementById("books");
+let tab = "journal", ledgerAcc = "bank";
+function openBooks(t){ if(t) tab = t; document.documentElement.style.setProperty("--bar-h", (document.querySelector(".bar").offsetHeight + 12) + "px"); books.hidden = false; renderTab(); }
+new MutationObserver(()=>{ document.getElementById("sheetSay").textContent = document.getElementById("reply").textContent; }).observe(document.getElementById("reply"),{childList:true,characterData:true,subtree:true});
+function closeBooks(){ books.hidden = true; }
+function jRows(e, opts={}){
+  const tags = (e.adj?`<span class="tag adj">ADJ</span>`:"") + (opts.flag?`<span class="tag flag">REVIEW</span>`:"") + (e.mine?`<span class="tag you">YOURS</span>`:"");
+  let h = "";
+  e.lines.filter(l=>l.dr).forEach((l,i)=>{ h += `<tr><td class="muted">${i?"":dmy(e.date)}</td><td>${esc(ACC[l.a].n)} A/c <span class="muted">… Dr</span>${i?"":tags}</td><td class="muted">${LF(l.a)}</td><td class="r">${num(l.dr)}</td><td class="r"></td></tr>`; });
+  e.lines.filter(l=>l.cr).forEach(l=>{ h += `<tr><td></td><td class="ind">To ${esc(ACC[l.a].n)} A/c</td><td class="muted">${LF(l.a)}</td><td class="r"></td><td class="r">${num(l.cr)}</td></tr>`; });
+  h += `<tr><td class="muted">${e.id}</td><td class="narr">(Being ${esc(e.narr.charAt(0).toLowerCase()+e.narr.slice(1))})</td><td></td><td></td><td></td></tr>`;
+  return h;
+}
+const opts = sel => KEYS.map(k=>`<option value="${k}"${k===sel?" selected":""}>${esc(ACC[k].n)}</option>`).join("");
+function flowLine(active){
+  const steps = [["journal","Journal"],["ledger","Ledger"],["tb","Trial balance"],["adj","Adjustments"],["final","Final accounts"]];
+  return `<div class="flow">${steps.map(([k,l])=>k===active?`<b>${l}</b>`:l).join(" → ")}</div>`;
+}
+function renderTab(){
+  document.querySelectorAll(".tab").forEach(b=>b.setAttribute("aria-selected", b.dataset.tab===tab));
+  const s = SNAP, body = document.getElementById("sheetBody"); let h = flowLine(tab);
+  if(tab==="journal"){
+    const flagged = new Set(s.flags.map(f=>f.id));
+    h += `<form class="form" id="jForm">
+      <label>Date<input type="date" id="jDate" value="2026-03-31" min="2025-04-01" max="2026-03-31"></label>
+      <label>Narration<input id="jNarr" placeholder="e.g. Goods sold on credit to Lotus Mart"></label>
+      <label>Debit (Dr)<select id="jDr">${opts("debtors")}</select></label>
+      <label>Credit (Cr)<select id="jCr">${opts("sales")}</select></label>
+      <label>Amount (₹)<input id="jAmt" inputmode="decimal" placeholder="25000"></label>
+      <button class="btn" type="submit">Post entry</button>
+      <div class="hint" id="jHint">Every entry posts to the ledger, trial balance and final accounts at once. You can also type “record sale 25000 on credit” in the command bar.</div>
+    </form>
+    <h4>Journal of ${CFG.company}</h4><div class="cap">${CFG.period} · ${s.entries.length} entries · L.F. = ledger folio</div>
+    <div class="xs"><table class="acct"><thead><tr><th style="width:110px">Date</th><th>Particulars</th><th style="width:50px">L.F.</th><th class="r" style="width:120px">Dr (₹)</th><th class="r" style="width:120px">Cr (₹)</th></tr></thead><tbody>
+      ${s.entries.map(e=>jRows(e,{flag:flagged.has(e.id)})).join("")}</tbody>
+      <tfoot><tr><td></td><td>Total</td><td></td><td class="r">${num(s.entries.reduce((a,e)=>a+e.lines.reduce((x,l)=>x+l.dr,0),0))}</td><td class="r">${num(s.entries.reduce((a,e)=>a+e.lines.reduce((x,l)=>x+l.cr,0),0))}</td></tr></tfoot></table></div>`;
+  }
+  if(tab==="ledger"){
+    const used = KEYS.filter(k=>s.L[k].rows.length);
+    if(!used.includes(ledgerAcc)) ledgerAcc = used[0];
+    const A = s.L[ledgerAcc], a = ACC[ledgerAcc];
+    const dr = A.rows.filter(r=>r.dr).map(r=>[dmy(r.date),"To "+r.name+" A/c",r.id,r.dr]);
+    const cr = A.rows.filter(r=>r.cr).map(r=>[dmy(r.date),"By "+r.name+" A/c",r.id,r.cr]);
+    const nominal = a.t==="income"||a.t==="expense";
+    const closeTo = a.s==="trading" ? "Trading A/c" : "Profit & Loss A/c";
+    if(A.bal>0) cr.push(["31 Mar 2026", nominal?"By "+closeTo:"By Balance c/d","",A.bal]);
+    if(A.bal<0) dr.push(["31 Mar 2026", nominal?"To "+closeTo:"To Balance c/d","",-A.bal]);
+    const tot = Math.max(A.dr,A.cr); const n = Math.max(dr.length,cr.length);
+    let rows = ""; for(let i=0;i<n;i++){ const x=dr[i]||["","","",null], y=cr[i]||["","","",null];
+      rows += `<tr><td class="muted">${x[0]}</td><td>${esc(x[1])}</td><td class="muted">${x[2]}</td><td class="r">${x[3]==null?"":num(x[3])}</td><td class="sep muted">${y[0]}</td><td>${esc(y[1])}</td><td class="muted">${y[2]}</td><td class="r">${y[3]==null?"":num(y[3])}</td></tr>`; }
+    const bd = !nominal && A.bal ? `<tr><td class="muted">1 Apr 2026</td><td>${A.bal>0?"To Balance b/d":""}</td><td></td><td class="r">${A.bal>0?num(A.bal):""}</td><td class="sep muted">${A.bal<0?"1 Apr 2026":""}</td><td>${A.bal<0?"By Balance b/d":""}</td><td></td><td class="r">${A.bal<0?num(-A.bal):""}</td></tr>` : "";
+    h += `<div class="row2"><label>Account&nbsp; <select id="ledSel">${used.map(k=>`<option value="${k}"${k===ledgerAcc?" selected":""}>${esc(ACC[k].n)} (L.F. ${LF(k)})</option>`).join("")}</select></label>
+      <span class="muted" style="color:var(--mute)">Balance: <b style="color:var(--ice);font-family:var(--f-mono)">${num(Math.abs(A.bal))} ${A.bal>=0?"Dr":"Cr"}</b></span></div>
+      <h4>${esc(a.n)} Account</h4><div class="cap">L.F. ${LF(ledgerAcc)} · ${a.t}${nominal?` · closes to ${closeTo}`:""}</div>
+      <div class="xs"><table class="acct"><thead><tr><th>Date</th><th>Particulars (Dr)</th><th>J.F.</th><th class="r">₹</th><th class="sep">Date</th><th>Particulars (Cr)</th><th>J.F.</th><th class="r">₹</th></tr></thead>
+      <tbody>${rows}<tr class="tot"><td></td><td></td><td></td><td class="r">${num(tot)}</td><td class="sep"></td><td></td><td></td><td class="r">${num(tot)}</td></tr>${bd}</tbody></table></div>`;
+  }
+  if(tab==="tb"){
+    const T = s.TB;
+    h += `<h4>Trial Balance of ${CFG.company}</h4><div class="cap">as at ${CFG.yearEnd}${s.pendAdj.length?` · before ${plural(s.pendAdj.length,"adjustment")}`:" · after adjustments"}</div>
+      <div class="xs"><table class="acct"><thead><tr><th style="width:50px">S.No</th><th>Name of account</th><th style="width:50px">L.F.</th><th class="r">Debit (₹)</th><th class="r">Credit (₹)</th></tr></thead><tbody>
+      ${T.rows.map((r,i)=>`<tr><td class="muted">${i+1}</td><td>${esc(ACC[r.k].n)}</td><td class="muted">${LF(r.k)}</td><td class="r">${r.dr?num(r.dr):""}</td><td class="r">${r.cr?num(r.cr):""}</td></tr>`).join("")}
+      </tbody><tfoot><tr><td></td><td>Total</td><td></td><td class="r">${num(T.dr)}</td><td class="r">${num(T.cr)}</td></tr></tfoot></table></div>
+      <div class="status"><span class="pill ${T.ok?"g":"a"}">${T.ok?"Trial balance agrees":"Difference "+money(T.dr-T.cr)}</span>${s.pendAdj.length?`<button class="btn" data-goto="adj">Next: ${plural(s.pendAdj.length,"adjustment")} →</button>`:`<button class="btn" data-goto="final">Next: final accounts →</button>`}</div>`;
+  }
+  if(tab==="adj"){
+    const adjs = QUEUE.filter(q=>q.kind==="adj");
+    h += `<div class="row2"><div><h4 style="text-align:left">Year-end adjustments</h4><div class="cap" style="text-align:left;margin:0">Net profit ${money(s.F.np)} now → ${money(s.Fall.np)} once all are posted</div></div>
+      ${s.pendAdj.length?`<button class="btn" id="postAll">Post all ${s.pendAdj.length}</button>`:`<span class="pill g">All posted</span>`}</div><div class="adjs">
+      ${adjs.map(q=>{ const x=st(q.id), e=q.entry, d=e.lines.find(l=>l.dr), c=e.lines.find(l=>l.cr);
+        return `<div class="adjc"><h5>${q.id} · ${esc(q.title)}</h5><p>${esc(q.why)}</p><code>${esc(ACC[d.a].n)} A/c Dr ${num(q.amt)} · To ${esc(ACC[c.a].n)} A/c ${num(q.amt)}</code>
+        <div class="b">${x==="approved"?`<span class="chip-s g">Posted</span><button class="btn" data-adj="${q.id}" data-act="undo">Reverse</button>`:`<button class="btn" data-adj="${q.id}" data-act="approve">Post</button>${x==="later"?`<span class="chip-s a">Later</span>`:""}`}</div></div>`; }).join("")}
+      </div>`;
+  }
+  if(tab==="final"){
+    const F = s.F;
+    const tf = (lH,rH,L,R) => { const n=Math.max(L.length,R.length); let r="";
+      for(let i=0;i<n;i++){ const a=L[i], b=R[i];
+        r += `<tr><td>${a?a.label:""}</td><td class="r">${a&&a.amt!=null?num(a.amt):""}</td><td class="sep">${b?b.label:""}</td><td class="r">${b&&b.amt!=null?num(b.amt):""}</td></tr>`; }
+      return r; };
+    const T = (txt,amt) => ({label:esc(txt),amt});
+    // Trading account
+    const trL = F.trDr.map(([n,v])=>T("To "+n,v)), trR = F.trCr.map(([n,v])=>T("By "+n,v));
+    if(F.gp>=0) trL.push(T("To Gross Profit c/d",F.gp)); else trR.push(T("By Gross Loss c/d",-F.gp));
+    const trTot = Math.max(sum(F.trDr)+Math.max(0,F.gp), sum(F.trCr)+Math.max(0,-F.gp));
+    const plL = [], plR = [];
+    if(F.gp>=0) plR.push(T("By Gross Profit b/d",F.gp)); else plL.push(T("To Gross Loss b/d",-F.gp));
+    F.plDr.forEach(([n,v])=>plL.push(T("To "+n,v))); F.plCr.forEach(([n,v])=>plR.push(T("By "+n,v)));
+    if(F.np>=0) plL.push(T("To Net Profit (to Capital A/c)",F.np)); else plR.push(T("By Net Loss (to Capital A/c)",-F.np));
+    const plTot = Math.max(plL.reduce((x,r)=>x+r.amt,0), plR.reduce((x,r)=>x+r.amt,0));
+    // Balance sheet
+    const sub = (rows) => rows.map(([l,v])=>`<div class="subl"><span>${esc(l)}</span><span>${num(v)}</span></div>`).join("");
+    const BL = [{label:`<b>Capital</b>${sub([["Opening balance",F.cap],[F.np>=0?"Add: Net profit":"Less: Net loss",F.np],["Less: Drawings",-F.draw]])}`,amt:F.capClose}];
+    for(const g of ["Long-term liabilities","Current liabilities"]) if(F.liab[g]){ BL.push({label:`<span class="muted">${g}</span>`,amt:null}); F.liab[g].forEach(([n,v])=>BL.push(T(n,v))); }
+    const BA = [];
+    for(const g of ["Fixed assets","Current assets"]) if(F.assets[g]){ BA.push({label:`<span class="muted">${g}</span>`,amt:null});
+      F.assets[g].forEach(x=>BA.push({label: x.less.length ? `${esc(x.label)}${sub([["Gross",x.gross],...x.less.map(([l,v])=>[l,-v])])}` : esc(x.label), amt:x.amt})); }
+    const banner = s.pendAdj.length ? `<div class="status"><span class="pill a">Draft · ${plural(s.pendAdj.length,"adjustment")} not posted</span><button class="btn" data-goto="adj">Review adjustments →</button></div>` : `<div class="status"><span class="pill g">Final accounts · adjustments posted</span></div>`;
+    h += banner + `
+      <h4>Trading and Profit &amp; Loss Account of ${CFG.company}</h4><div class="cap">for the year ended ${CFG.yearEnd}</div>
+      <div class="xs"><table class="acct"><thead><tr><th>Dr · Particulars</th><th class="r">₹</th><th class="sep">Cr · Particulars</th><th class="r">₹</th></tr></thead>
+      <tbody>${tf("","",trL,trR)}<tr class="tot"><td></td><td class="r">${num(trTot)}</td><td class="sep"></td><td class="r">${num(trTot)}</td></tr>${tf("","",plL,plR)}<tr class="tot"><td></td><td class="r">${num(plTot)}</td><td class="sep"></td><td class="r">${num(plTot)}</td></tr></tbody></table></div>
+      <h4 style="margin-top:22px">Balance Sheet of ${CFG.company}</h4><div class="cap">as at ${CFG.yearEnd}</div>
+      <div class="xs"><table class="acct"><thead><tr><th>Liabilities</th><th class="r">₹</th><th class="sep">Assets</th><th class="r">₹</th></tr></thead>
+      <tbody>${tf("","",BL,BA)}</tbody><tfoot><tr><td>Total</td><td class="r">${num(F.totL)}</td><td class="sep">Total</td><td class="r">${num(F.totA)}</td></tr></tfoot></table></div>
+      <div class="status"><span class="pill ${F.ok?"g":"a"}">${F.ok?"Balance sheet agrees":"Out by "+money(F.totL-F.totA)}</span><span class="pill g">Net profit ${money(F.np)} · ${pct(F.np/F.sales)} of sales</span></div>`;
+  }
+  body.innerHTML = h;
+}
+
+/* ============================== ACTIONS ============================== */
+function setAp(id, v){ if(v==="pending") delete S.ap[id]; else S.ap[id] = v; refresh(); }
+function postUser(dr,cr,amt,narr,date="2026-03-31"){
+  const id = "U" + String(S.seq++).padStart(2,"0");
+  const e = E(id,date,narr,dr,cr,amt,{mine:true}); S.user.push(e); refresh(); return e;
+}
+function nextTax(){
+  const now = new Date(), out = [];
+  const add = (d,label) => { if(d>=new Date(now.getFullYear(),now.getMonth(),now.getDate())) out.push({d,label,when:d.toLocaleDateString("en-GB",{day:"numeric",month:"short"})}); };
+  for(let m=0;m<3;m++){ const y=now.getFullYear(), mo=now.getMonth()+m;
+    add(new Date(y,mo,7),"TDS deposit"); add(new Date(y,mo,11),"GSTR-1 return"); add(new Date(y,mo,20),"GSTR-3B return and GST payment"); }
+  for(const [mo,dd] of [[5,15],[8,15],[11,15],[2,15]]) for(const y of [now.getFullYear(),now.getFullYear()+1]) add(new Date(y,mo,dd),"Advance tax instalment");
+  return out.sort((a,b)=>a.d-b.d).slice(0,5);
+}
+function tbl(head, rows){ return `<table class="mini"><thead><tr>${head.map((h,i)=>`<th${i?' class="r"':""}>${h}</th>`).join("")}</tr></thead><tbody>${rows.map(r=>`<tr>${r.map((c,i)=>`<td${i?' class="r"':""}>${c}</td>`).join("")}</tr>`).join("")}</tbody></table>`; }
+
+/* --- natural-language journal entries --- */
+function parseAmt(t){
+  const m = t.replace(/₹|rs\.?|inr/gi," ").match(/(\d[\d,]*(?:\.\d+)?)\s*(k|thousand|lakhs?|lacs?|l|crore|cr)?\b/i);
+  if(!m) return 0; let n = parseFloat(m[1].replace(/,/g,"")); const u = (m[2]||"").toLowerCase();
+  if(u==="k"||u==="thousand") n*=1e3; else if(/^(lakh|lac|l)/.test(u)) n*=1e5; else if(/^(crore|cr)$/.test(u)) n*=1e7;
+  return Math.round(n);
+}
+function parseEntry(t){
+  const amt = parseAmt(t); if(!amt) return null;
+  const has = r => r.test(t);
+  const credit = has(/on credit|\bcredit\b/), cash = has(/\bcash\b/);
+  const pay = cash ? "cash" : "bank", via = cash ? "in cash" : "by bank";
+  if(has(/\b(sold|sale|sales|sell|invoice[d]?)\b/)) return {dr:credit?"debtors":pay, cr:"sales", narr:`Goods sold ${credit?"on credit":cash?"for cash":"against bank receipt"}`};
+  if(has(/\b(received|collected|receipt)\b/) && has(/debtor|customer|sharma|lotus|greenleaf|from/)) return {dr:pay, cr:"debtors", narr:"Amount received from debtors"};
+  if(has(/\b(paid|pay)\b/) && has(/supplier|creditor|kaveri|deccan|vendor/)) return {dr:"creditors", cr:pay, narr:"Paid creditors"};
+  if(has(/\b(furniture|equipment|laptop|computer|machine|machinery|printer|rack)/)) return {dr:"furniture", cr:credit?"creditors":pay, narr:"Fixed asset purchased"};
+  if(has(/\b(bought|buy|purchase[ds]?|stock|goods|inventory)\b/)) return {dr:"purchases", cr:credit?"creditors":pay, narr:`Goods purchased ${credit?"on credit":via}`};
+  if(has(/\brent\b/)) return {dr:"rent", cr:pay, narr:`Rent paid ${via}`};
+  if(has(/salar|wages/)) return {dr:"salaries", cr:pay, narr:`Salaries paid ${via}`};
+  if(has(/electric|power bill/)) return {dr:"electricity", cr:pay, narr:`Electricity bill paid ${via}`};
+  if(has(/advert|marketing|promotion/)) return {dr:"advertising", cr:pay, narr:`Advertising paid ${via}`};
+  if(has(/interest/)) return {dr:"interest", cr:pay, narr:`Loan interest paid ${via}`};
+  if(has(/office|stationery|supplies/)) return {dr:"office", cr:pay, narr:`Office expenses paid ${via}`};
+  if(has(/drawing|personal/)) return {dr:"drawings", cr:pay, narr:"Withdrawn by proprietor for personal use"};
+  if(has(/capital|invest/)) return {dr:pay, cr:"capital", narr:"Additional capital introduced"};
+  if(has(/\bloan\b/)) return {dr:pay, cr:"loan", narr:"Loan received from bank"};
+  return null;
+}
+
+/* ============================== COMMAND ROUTER ============================== */
+let focus = false;
+function greet(){ const h = new Date().getHours(); return h<12?"Good morning":h<17?"Good afternoon":"Good evening"; }
+function flashRight(){ const r = document.getElementById("right"); r.classList.add("flash"); setTimeout(()=>r.classList.remove("flash"),2200);
+  document.querySelectorAll(".dec").forEach((d,i)=>{ if(i<3 && st(d.dataset.id)==="pending"){ d.classList.add("hl"); setTimeout(()=>d.classList.remove("hl"),2600);} }); }
+
+function run(raw){
+  const t = raw.trim().toLowerCase().replace(/^(hey |ok |okay )?atlas[,.]?\s*/,"");
+  const s = SNAP, F = s.F, U = CFG.user;
+  if(!t){ return; }
+  let m;
+  if((m = t.match(/^call me (.+)/))){ CFG.user = S.name = cap1(m[1].trim()); save(); return say(`Understood. ${CFG.user} it is.`); }
+  if(/^(help|what can you do|commands)/.test(t)) return say(`Try “record sale 25000 on credit”, “trial balance”, “post all adjustments”, “final accounts”, “cash position”, or “what if sales drop 15%”. I keep the books, ${U}. You keep the judgement.`,
+    tbl(["Department","Ask"],[["Accounting","show journal · ledger cash · trial balance · post all adjustments · final accounts · review journals"],["FP&A","budget variance · what if sales drop 10% · forecast next year · show kpis"],["Cash","cash position · cash alerts"],["Revenue & spend","collections · payables · expense audit"],["Tax & controls","tax calendar · controls review"],["CFO office","good morning atlas · status report · board pack · focus mode"]]));
+  if(/good (morning|afternoon|evening)|morning brief|\bbrief(ing)?\b/.test(t)){
+    const p = s.pending.length;
+    const first = s.pendAdj.length ? `approve the ${words(s.pendAdj.length)} year-end adjustments, which move net profit from ${money(F.np)} to ${money(s.Fall.np)}` : st("P1")==="pending" ? `approve the ₹80,000 supplier payment run` : `chase Greenleaf Stores for ₹95,000, now 72 days overdue`;
+    return say(`${greet()}, ${U}. All 20 agents ran overnight: ${s.entries.length} entries are posted and the trial balance agrees at ${money(s.TB.dr)}, with one bank feed needing a reconnect. ${cap1(words(p))} decision${p===1?"":"s"} wait for you, and the first thing to do is ${first}.`);
+  }
+  if(/focus/.test(t)){
+    focus = /off|exit|stop|end/.test(t) ? false : !focus;
+    document.getElementById("app").classList.toggle("focus", focus);
+    document.getElementById("focusChip").classList.toggle("on", focus);
+    setSub();
+    return say(focus ? "Focus mode on. Panels dimmed, motion calmed. I'll keep the noise down." : "Focus mode off. Everything back on screen.");
+  }
+  if(/status/.test(t)){
+    const amber = agentsModel(s).flatMap(d=>d.list).filter(a=>a.warn);
+    return say(`${20-amber.length} of 20 agents are green. Amber housekeeping: ${amber.map(a=>a.id).join(", ")}. The bank feed token is the only true integration fault; the rest are waiting on you.`,
+      tbl(["Agent","Flag"], amber.map(a=>[a.id,`<span class="warn">${esc(a.act)}</span>`])));
+  }
+  if(/waiting|pending|approv(al|e)s?\b(?!.*adjust)|decisions|sign.?off/.test(t) && !/post|run/.test(t)){
+    const p = s.pending; flashRight();
+    if(!p.length) return say(`Nothing is waiting on you, ${U}. A rare and beautiful thing.`);
+    const top = p.slice(0,3).map(q=>`${q.title.toLowerCase()} (${money(q.amt)})`);
+    return say(`${cap1(words(p.length))} item${p.length===1?"":"s"} wait for your sign-off. The top three are ${top.slice(0,-1).join(", ")}${top.length>1?" and ":""}${top.at(-1)}. I've highlighted them on the right.`);
+  }
+  if(/adjust/.test(t)){
+    if(/post|run|approve|apply|all|do/.test(t)){
+      const pend = s.pendAdj; if(!pend.length){ openBooks("final"); return say(`All adjustments are already posted, ${U}. Final accounts are on screen.`); }
+      const before = F.np; pend.forEach(q=>S.ap[q.id]="approved"); refresh(); openBooks("final");
+      return say(`Posting ${words(pend.length)} year-end adjustments to the ledger. Done: net profit moves from ${money(before)} to ${money(SNAP.F.np)}, and the balance sheet ${SNAP.F.ok?"agrees":"is out"} at ${money(SNAP.F.totA)}.`);
+    }
+    openBooks("adj"); return say(`${cap1(words(s.pendAdj.length))} adjustments are proposed: closing stock, depreciation, prepaid rent, accruals, a bad-debt provision and one reclassification. Post them here or tell me to post all.`);
+  }
+  if(/\b(record|post|enter|book|paid|pay|received|sold|sell|bought|purchased|invoice[d]?)\b/.test(t) && parseAmt(t)){
+    const p = parseEntry(t);
+    if(!p) return say(`I can see the amount but not the accounts. Try “record sale 25000 on credit” or “paid rent 12000 in cash”.`);
+    const amt = parseAmt(t); const e = postUser(p.dr,p.cr,amt,p.narr);
+    return say(`Posting ${money(amt)}: ${ACC[p.dr].n} Dr, ${ACC[p.cr].n} Cr. Done as ${e.id}; trial balance ${SNAP.TB.ok?"still agrees":"is out"} at ${money(SNAP.TB.dr)} and net profit is now ${money(SNAP.F.np)}.`);
+  }
+  if(/review|control|flag|exception/.test(t)){
+    const f = s.flags;
+    return say(f.length ? `Journal review found ${plural(f.length,"exception")}. ${f[0].msg}. I've proposed the correcting entry in your queue.` : `Journal review is clean: ${s.entries.length} entries checked for capital items, missing narrations, imbalances and duplicates.`,
+      f.length ? tbl(["Entry","Finding"], f.map(x=>[x.id,`<span class="warn">${esc(x.msg.split(": ")[1])}</span>`])) : "");
+  }
+  if(/journal|day ?book/.test(t)){ openBooks("journal"); return say(`The journal is open: ${s.entries.length} entries for ${CFG.period}. Post a new one with the form or just tell me.`); }
+  if(/ledger|account of|t.?account/.test(t)){
+    const hit = KEYS.find(k=>t.includes(ACC[k].n.toLowerCase().split(" ")[0]) && k!=="stocktr") ; if(hit) ledgerAcc = hit;
+    openBooks("ledger"); const A = s.L[ledgerAcc];
+    return say(`${ACC[ledgerAcc].n} account is open, with a balance of ${money(Math.abs(A.bal))} ${A.bal>=0?"Dr":"Cr"}.`);
+  }
+  if(/trial/.test(t)){ openBooks("tb"); return say(`Trial balance ${s.TB.ok?"agrees":"does not agree"}: debits ${money(s.TB.dr)}, credits ${money(s.TB.cr)} across ${s.TB.rows.length} accounts.${s.pendAdj.length?` ${cap1(words(s.pendAdj.length))} adjustments are still to come.`:""}`); }
+  if(/final|balance sheet|p ?& ?l|profit|loss|trading|net profit/.test(t)){
+    openBooks("final");
+    return say(`${s.pendAdj.length?"Draft final accounts":"Final accounts"} are on screen. Gross profit ${money(F.gp)}, net profit ${money(F.np)}, and the balance sheet ${F.ok?"agrees":"is out"} at ${money(F.totA)}.${s.pendAdj.length?` Post the adjustments and profit becomes ${money(s.Fall.np)}.`:""}`);
+  }
+  if(/cash|runway|bank|liquid/.test(t)){
+    return say(`Cash and bank stand at ${money(s.cashBank)}: ${money(s.L.bank.bal)} at the bank and ${money(s.L.cash.bal)} in hand. Monthly spend runs near ${money(s.burn)}, which gives about ${words(Math.floor(s.runway))} months of runway.`,
+      tbl(["Week","Opening","In","Out","Closing"], (()=>{ let o=s.cashBank; const rows=[]; const inflow=[0,95000,0,60000,0,145000]; for(let w=0;w<6;w++){ const out=Math.round(s.burn/4.33), c=o+inflow[w]-out; rows.push([`W${w+1}`,num(o),num(inflow[w]),num(out),num(c)]); o=c; } return rows; })()) + `<div style="color:var(--mute);font-size:11.5px;margin-top:4px">Six-week view. Inflows assume Greenleaf pays in W2 and Sharma in W6 (example).</div>`);
+  }
+  if(/collect|debtor|receivable|overdue|chase/.test(t)){
+    return say(`Debtors stand at ${money(s.L.debtors.bal)}. Greenleaf Stores owes ₹95,000 and is 72 days out, so chase them first; Sharma Retail is at 45 days.`,
+      tbl(["Customer","Owed (₹)","Days"], DEBTORS.map(([n,v,d])=>[n,num(v),`<span class="${d>60?"warn":d>30?"":"good"}">${d}</span>`])));
+  }
+  if(/payable|creditor|supplier|vendor/.test(t)){ flashRight();
+    return say(`Creditors total ${money(s.L.creditors.bal*-1)}. ${st("P1")==="approved"?"Kaveri Wholesale has been paid; Deccan Packaging's ₹40,000 is due 18 April.":"Kaveri Wholesale is due ₹80,000 on 5 April, and the payment run is in your queue."}`,
+      tbl(["Supplier","Due (₹)","Due date"], CREDITORS.map(([n,v,d])=>[n,num(v),d])));
+  }
+  if(/variance|budget/.test(t)){
+    const rows = Object.entries(BUDGET).map(([k,b])=>{ const a = k==="sales"? -s.L.sales.bal : s.L[k].bal; const v=(a-b)/b; const bad = k==="sales"? v<0 : v>0.05; return [ACC[k].n,num(b),num(a),`<span class="${bad?"warn":"good"}">${v>=0?"+":""}${pct(v)}</span>`]; });
+    return say(`Sales beat budget by ${pct((F.sales-BUDGET.sales)/BUDGET.sales)}. Advertising is the outlier at ${money(s.L.advertising.bal)} against ${money(BUDGET.advertising)}, all from one March campaign.`, tbl(["Line","Budget","Actual","Variance"],rows));
+  }
+  if(/what if|scenario|drop|fall|rise|increase|decrease/.test(t)){
+    const pm = t.match(/(\d+(?:\.\d+)?)\s*%/); const p = (pm?+pm[1]:10)/100 * (/rise|increase|up|grow/.test(t)?1:-1);
+    const dGP = F.sales*p*(F.gp/F.sales); const np2 = F.np + dGP;
+    return say(`If sales ${p<0?"fall":"rise"} ${pct(Math.abs(p))} at today's gross margin, gross profit moves by ${money(dGP)} and net profit lands at ${money(np2)}. ${np2<0?"That is a loss, so costs would need cutting first.":"Fixed costs stay put, so the swing goes straight to the bottom line."}`,
+      tbl(["","Now","Scenario"],[["Sales",num(F.sales),num(F.sales*(1+p))],["Gross profit",num(F.gp),num(F.gp+dGP)],["Net profit",num(F.np),num(np2)]]));
+  }
+  if(/kpi|ratio|margin|metric/.test(t)){
+    const dd = s.L.debtors.bal/F.sales*365;
+    return say(`Gross margin is ${pct(F.gp/F.sales)}, net margin ${pct(F.np/F.sales)}, and the current ratio ${(F.ca/Math.max(1,F.cl)).toFixed(2)}. Debtor days at ${Math.round(dd)} are the one to watch.`,
+      tbl(["KPI","Value"],[["Gross margin",pct(F.gp/F.sales)],["Net margin",pct(F.np/F.sales)],["Current ratio",(F.ca/Math.max(1,F.cl)).toFixed(2)],["Debtor days",`<span class="${dd>60?"warn":""}">${Math.round(dd)}</span>`],["Return on capital",pct(F.np/Math.max(1,F.cap))]]));
+  }
+  if(/tax|gst|tds|filing/.test(t)){
+    const n = nextTax();
+    return say(`Next up is ${n[0].label} on ${n[0].when}, then ${n[1].label} on ${n[1].when}. I'll remind you three days before each.`, tbl(["Due","Filing"], n.map(x=>[x.when,x.label]).map(([a,b])=>[b,a])));
+  }
+  if(/board/.test(t)){
+    return say(`Board pack for ${CFG.period}: revenue ${money(F.sales)}, gross margin ${pct(F.gp/F.sales)}, net profit ${money(F.np)}, cash ${money(s.cashBank)}. Headline risk is collections, with Greenleaf at 72 days.`,
+      tbl(["Section","Status"],[["Financial summary","Ready"],["Final accounts",s.pendAdj.length?"Draft":"Final"],["Cash and runway","Ready"],["Risks and asks","Collections, bank feed"]]));
+  }
+  if(/forecast|next year|projection/.test(t)){
+    return say(`At 12% growth, FY 2026-27 sales reach about ${money(F.sales*1.12)}. Holding today's gross margin and fixed costs, net profit would land near ${money(F.np + F.sales*0.12*(F.gp/F.sales))}.`);
+  }
+  if(/expense|spend|cost/.test(t)){
+    const ex = KEYS.filter(k=>ACC[k].s==="pl" && s.L[k].bal>0).map(k=>[ACC[k].n,s.L[k].bal]).sort((a,b)=>b[1]-a[1]); const tot = sum(ex);
+    return say(`Operating expenses total ${money(tot)}. ${ex[0][0]} are the largest line at ${pct(ex[0][1]/tot)}; advertising doubled up in a single March campaign and deserves a look.`, tbl(["Expense","₹","Share"], ex.map(([n,v])=>[n,num(v),pct(v/tot)])));
+  }
+  if(/reset/.test(t)){ resetDemo(); return; }
+  return say(`I didn't catch that, ${U}. Try “trial balance”, “record sale 25000 on credit”, or say “help”.`);
+}
+
+function resetDemo(){ S = {user:[],ap:{},seq:1,name:CFG.user}; refresh(); say("Books reset to the sample year. Your entries and approvals are cleared."); }
+
+/* ============================== EVENTS ============================== */
+document.getElementById("askForm").addEventListener("submit", e=>{ e.preventDefault(); const i=document.getElementById("ask"); const v=i.value; i.value=""; ask(v); });
+document.getElementById("chips").addEventListener("click", e=>{ const b=e.target.closest("[data-cmd]"); if(b) run(b.dataset.cmd); });
+document.getElementById("agents").addEventListener("click", e=>{ const b=e.target.closest("[data-cmd]"); if(b) run(b.dataset.cmd); });
+document.getElementById("queue").addEventListener("click", e=>{
+  const b = e.target.closest("button[data-act]"); if(!b) return; const id = b.closest(".dec").dataset.id; const q = QUEUE.find(x=>x.id===id);
+  if(b.dataset.act==="approve"){ setAp(id,"approved"); say(`Approved: ${q.title.toLowerCase()}. Posted as ${id}; net profit now ${money(SNAP.F.np)}.`); }
+  else if(b.dataset.act==="later"){ setAp(id,"later"); say(`Parked for later: ${q.title.toLowerCase()}.`); }
+  else { setAp(id,"pending"); say(`${q.title} is back in the queue${q.entry?" and its entry is reversed":""}.`); }
+});
+document.getElementById("voice").addEventListener("click", e=>{ voiceOn=!voiceOn; const b=e.currentTarget; b.classList.toggle("off",!voiceOn); b.setAttribute("aria-pressed",voiceOn); b.lastChild.textContent = "Voice: "+(voiceOn?"ON":"OFF"); if(!voiceOn && synth) synth.cancel(); });
+document.getElementById("openBooks").addEventListener("click", ()=>openBooks());
+document.getElementById("closeBooks").addEventListener("click", closeBooks);
+document.getElementById("resetDemo").addEventListener("click", resetDemo);
+document.addEventListener("keydown", e=>{ if(e.key==="Escape" && !books.hidden) closeBooks(); });
+document.getElementById("tabs").addEventListener("click", e=>{ const b=e.target.closest(".tab"); if(b){ tab=b.dataset.tab; renderTab(); } });
+books.addEventListener("click", e=>{ if(e.target===books) closeBooks(); });
+document.getElementById("sheetBody").addEventListener("click", e=>{
+  const g = e.target.closest("[data-goto]"); if(g){ tab=g.dataset.goto; renderTab(); return; }
+  const a = e.target.closest("[data-adj]"); if(a){ setAp(a.dataset.adj, a.dataset.act==="approve"?"approved":"pending"); return; }
+  if(e.target.id==="postAll") run("post all adjustments");
+});
+document.getElementById("sheetBody").addEventListener("change", e=>{ if(e.target.id==="ledSel"){ ledgerAcc=e.target.value; renderTab(); } });
+document.getElementById("sheetBody").addEventListener("submit", e=>{
+  if(e.target.id!=="jForm") return; e.preventDefault();
+  const dr=document.getElementById("jDr").value, cr=document.getElementById("jCr").value, amt=parseAmt(document.getElementById("jAmt").value||""), narr=document.getElementById("jNarr").value.trim(), date=document.getElementById("jDate").value||"2026-03-31";
+  const hint = document.getElementById("jHint");
+  if(dr===cr){ hint.textContent="Debit and credit must be different accounts."; hint.className="hint err"; return; }
+  if(!amt){ hint.textContent="Enter an amount above zero."; hint.className="hint err"; return; }
+  if(!narr){ hint.textContent="Add a narration so the entry can be reviewed later."; hint.className="hint err"; return; }
+  const en = postUser(dr,cr,amt,narr,date);
+  say(`Posted ${en.id}: ${ACC[dr].n} Dr, ${ACC[cr].n} Cr, ${money(amt)}. Trial balance ${SNAP.TB.ok?"agrees":"is out"}.`);
+});
+
+/* ============================== BRAIN: Claude answers through the page's `sample` capability ==============================
+   Inside Claude, open questions go to Claude with the live books and a few page tools.
+   Anywhere else (the standalone file), the built-in command router answers. */
+let brain = null, brainTools = false, brainCtl = null, turns = [];
+function persona(){
+  return `You are Atlas, the executive AI CFO for ${CFG.company}, speaking with ${CFG.user} through a voice HUD.
+Style: calm, concise, precise, with subtle dry British wit. Two or three sentences at most unless ${CFG.user} asks for a deep dive. Address them as ${CFG.user}. Write plain spoken sentences only: no markdown, no lists, no emoji, because your words are read aloud.
+Money: Indian rupees with Indian digit grouping, for example ₹1,99,800.
+Execution protocol: when ${CFG.user} asks you to do something (post an entry, approve or park a decision, open the books, run a report, focus mode), state the intended action in one short line, use the tools, then report the outcome in one line. Never claim something happened unless a tool returned it.
+Accounting: you run a full accounting department: journal, ledger, trial balance, year-end adjustments, Trading account, Profit and Loss account and balance sheet. Use correct double entry when posting, choosing account keys from the snapshot. Explain accounting concepts simply when asked; you may answer general finance questions too.
+Facts: use only the live books snapshot for the company's figures. If a figure is not there, say so briefly. All figures are example data for a fictional company.
+"Good morning, Atlas" means: summarise what the agents did, how many decisions wait for ${CFG.user}, and the single highest-priority action.`;
+}
+function snapshotText(){
+  const s = SNAP, F = s.F;
+  return JSON.stringify({
+    today: new Date().toDateString(), company: CFG.company, period: CFG.period, yearEnd: CFG.yearEnd,
+    cashAndBank: s.cashBank, bank: s.L.bank.bal, cashInHand: s.L.cash.bal, monthlySpend: Math.round(s.burn), runwayMonths: +s.runway.toFixed(1),
+    sales: F.sales, grossProfit: F.gp, netProfit: F.np, netProfitIfAllAdjustmentsPosted: s.Fall.np,
+    balanceSheet: {total: F.totA, agrees: F.ok, capitalClosing: F.capClose, currentAssets: F.ca, currentLiabilities: F.cl},
+    trialBalance: {debitTotal: s.TB.dr, creditTotal: s.TB.cr, agrees: s.TB.ok, balances: Object.fromEntries(s.TB.rows.map(r=>[ACC[r.k].n, r.dr ? r.dr+" Dr" : r.cr+" Cr"]))},
+    decisionsQueue: QUEUE.map(q=>({id:q.id, title:q.title, amount:q.amt, status:st(q.id), why:q.why, agent:q.agent})),
+    journalReviewFlags: s.flags.map(f=>f.msg),
+    debtors: DEBTORS.map(([n,v,d])=>({customer:n, owed:v, daysOutstanding:d})),
+    creditors: CREDITORS.map(([n,v,d])=>({supplier:n, due:v, dueDate:d})),
+    budgetVsActual: Object.fromEntries(Object.entries(BUDGET).map(([k,b])=>[ACC[k].n, {budget:b, actual: k==="sales" ? -s.L.sales.bal : s.L[k].bal}])),
+    nextTaxDates: nextTax().map(t=>`${t.label}: ${t.when}`),
+    amberAgents: agentsModel(s).flatMap(d=>d.list).filter(a=>a.warn).map(a=>`${a.id}: ${a.act}`),
+    lastEntries: s.entries.slice(-5).map(e=>`${e.id} ${e.date} ${e.narr} ${e.lines.map(l=>`${ACC[l.a].n} ${l.dr?"Dr "+l.dr:"Cr "+l.cr}`).join(", ")}`),
+    accountKeys: Object.fromEntries(KEYS.map(k=>[k, ACC[k].n])),
+  });
+}
+const TOOLS = [
+  {name:"post_journal_entry", description:"Post a double-entry journal entry to the books (dated 31 March 2026 unless a date is given). Returns the entry id, whether the trial balance agrees, and the new net profit.",
+   inputSchema:{type:"object",properties:{debit:{type:"string",enum:KEYS,description:"account key to debit"},credit:{type:"string",enum:KEYS,description:"account key to credit"},amount:{type:"number",description:"amount in rupees, above zero"},narration:{type:"string",description:"short narration, e.g. Goods sold on credit to Lotus Mart"},date:{type:"string",description:"YYYY-MM-DD within FY 2025-26, optional"}},required:["debit","credit","amount","narration"]},
+   execute(i){ const dr=String(i.debit), cr=String(i.credit), amt=Math.round(Number(i.amount)); let date=String(i.date||"2026-03-31");
+     if(!ACC[dr]||!ACC[cr]) throw new Error("Unknown account key"); if(dr===cr) throw new Error("Debit and credit must differ"); if(!(amt>0)) throw new Error("Amount must be above zero");
+     if(!/^\d{4}-\d{2}-\d{2}$/.test(date) || date<"2025-04-01" || date>"2026-03-31") date="2026-03-31";
+     const e = postUser(dr,cr,amt,String(i.narration||"Entry posted by Atlas").slice(0,140),date);
+     return {posted:e.id, trialBalanceAgrees:SNAP.TB.ok, trialBalanceTotal:SNAP.TB.dr, netProfit:SNAP.F.np}; }},
+  {name:"set_decision", description:"Act on an item in the 'Waiting on you' queue by id (A1-A7 adjustments, P1 payment run). approve posts its entry, later parks it, undo returns it to pending and reverses any entry. Returns the new net profit.",
+   inputSchema:{type:"object",properties:{id:{type:"string",enum:QUEUE.map(q=>q.id)},decision:{type:"string",enum:["approve","later","undo"]}},required:["id","decision"]},
+   execute(i){ const q=QUEUE.find(x=>x.id===String(i.id)); if(!q) throw new Error("No such item"); const d=String(i.decision);
+     setAp(q.id, d==="approve"?"approved":d==="later"?"later":"pending"); return {id:q.id, title:q.title, status:st(q.id), netProfit:SNAP.F.np, balanceSheetAgrees:SNAP.F.ok}; }},
+  {name:"run_command", description:"Run one of Atlas's built-in HUD commands and get its result text; it may also show a table or open the books on screen. Commands: show journal, ledger <account name>, trial balance, show adjustments, post all adjustments, final accounts, review journals, status report, what's waiting on me, focus mode, focus off, cash position, collections, payables, budget variance, what if sales drop <n>%, show kpis, tax calendar, board pack, expense audit, forecast next year, close books.",
+   inputSchema:{type:"object",properties:{command:{type:"string"}},required:["command"]},
+   execute(i){ const c=String(i.command||""); if(/close books/i.test(c)){ closeBooks(); return "Books closed."; }
+     CAPTURE=[]; try{ run(c); } finally { var out=CAPTURE; CAPTURE=null; } return out.join(" ") || "Done."; }},
+];
+
+function setBrainBadge(){ const b=document.getElementById("brain"); b.classList.toggle("off",!brain); b.lastChild.textContent = brain ? "Brain: Claude" : "Brain: built-in"; }
+(async()=>{ try{ if(window.claude && window.claude.use){ const sm = await window.claude.use("sample");
+  if(sm){ const lim = await sm.limits().catch(()=>null); brainTools = !!(lim && lim.tools); brain = sm; setBrainBadge(); } } }catch(e){} })();
+
+function tip(msg){ const t=document.getElementById("tip"); t.textContent=msg||""; t.hidden=!msg; }
+function setReply(text, done){
+  clearInterval(typeTimer); const el=document.getElementById("reply"); el.textContent=text;
+  if(!done){ const c=document.createElement("span"); c.className="cur"; el.appendChild(c); }
+}
+/* speech queue: speak whole sentences while the answer streams */
+let utterLeft = 0;
+function speakChunk(t, last){
+  if(!voiceOn || !synth || !t.trim()){ if(last && utterLeft===0){ speaking=false; afterSpeech(); } return; }
+  const u = new SpeechSynthesisUtterance(speakable(t)); const v = pickVoice(); if(v) u.voice = v;
+  u.lang="en-GB"; u.pitch=.82; u.rate=1; utterLeft++; synthActive=true; speaking=true;
+  u.onboundary=()=>{ level=1; };
+  u.onend=u.onerror=()=>{ utterLeft=Math.max(0,utterLeft-1); if(utterLeft===0){ synthActive=false; speaking=false; if(last) afterSpeech(); } };
+  try{ synth.speak(u); }catch(e){ utterLeft--; }
+}
+function speakNew(text, from, final){
+  const rest = text.slice(from); let cut = -1;
+  if(final) cut = rest.length; else { const re=/[.!?](\s|$)/g; let m; while((m=re.exec(rest))) cut = m.index+1; }
+  if(cut<=0){ if(final) speakChunk("", true); return from; }
+  speakChunk(rest.slice(0,cut), final); return from+cut;
+}
+
+async function ask(raw){
+  const v = String(raw||"").trim(); if(!v) return;
+  tip("");
+  if(!brain){ run(v); afterSpeechIfSilent(); return; }
+  if(brainCtl) brainCtl.abort();
+  if(synth) synth.cancel(); utterLeft = 0;
+  const ctl = new AbortController(); brainCtl = ctl;
+  turns.push({role:"user",content:v}); turns = turns.slice(-12); while(turns.length && turns[0].role!=="user") turns.shift();
+  const msgs = [{role:"user",content:persona()}, ...turns.slice(0,-1), {role:"user",content:`Live books snapshot (JSON):\n${snapshotText()}\n\n${CFG.user} says: ${v}`}];
+  document.getElementById("card").innerHTML = "";
+  setReply("Thinking…"); document.getElementById("sub").textContent = "Thinking"; speaking = true;
+  let spoken = 0;
+  try{
+    const opts = {modelTier:"quick", cache:false, signal:ctl.signal, onText:({text})=>{ setReply(text); spoken = speakNew(text, spoken, false); }};
+    if(brainTools){ opts.tools = TOOLS; delete opts.cache; }
+    const {text} = await brain(msgs, opts);
+    setReply(text, true); speakNew(text, spoken, true);
+    turns.push({role:"assistant",content:text});
+  }catch(e){
+    turns.pop();
+    if(e && e.code==="cancelled") return;
+    speaking = false;
+    if(e && ["not_granted","sampling_disabled","not_declared","capability_disabled","capability_removed"].includes(e.code)){ brain=null; setBrainBadge(); }
+    else if(e && e.code==="rate_limited") tip("Claude is busy for a moment, so the built-in answer is shown.");
+    run(v); afterSpeechIfSilent();
+  }finally{ if(brainCtl===ctl) brainCtl=null; setSub(); }
+}
+function afterSpeechIfSilent(){ if(!(voiceOn && synth)) setTimeout(afterSpeech, 800); }
+
+/* ============================== MICROPHONE: hands-free talk mode ============================== */
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+let rec = null, listening = false, talkMode = false, heard = false;
+const micBtn = document.getElementById("mic");
+function micUI(){ micBtn.classList.toggle("on", talkMode); micBtn.textContent = talkMode ? "STOP" : "TALK"; micBtn.setAttribute("aria-pressed", talkMode); }
+function micBlocked(){
+  talkMode = false; micUI();
+  tip("The microphone is blocked in this view. Tap the mic on your phone keyboard to dictate, then Send. Atlas will still talk back.");
+  document.getElementById("ask").focus();
+}
+function startListening(){
+  if(!SR){ micBlocked(); return; }
+  if(listening) return;
+  rec = new SR(); rec.lang = "en-IN"; rec.interimResults = true; rec.continuous = false; heard = false;
+  rec.onstart = ()=>{ listening = true; document.getElementById("ask").placeholder = "Listening…"; document.getElementById("sub").textContent = "Listening"; };
+  rec.onresult = ev=>{ const r = ev.results[ev.results.length-1]; document.getElementById("ask").value = r[0].transcript;
+    if(r.isFinal){ heard = true; const v = r[0].transcript; document.getElementById("ask").value = ""; ask(v); } };
+  rec.onerror = ev=>{ if(["not-allowed","service-not-allowed","audio-capture"].includes(ev.error)) micBlocked();
+    else if(ev.error==="no-speech"){ talkMode = false; micUI(); tip("I stopped listening after a quiet spell. Tap TALK to carry on."); } };
+  rec.onend = ()=>{ listening = false; document.getElementById("ask").placeholder = "Ask Atlas…  e.g. “record sale 25000 on credit”"; setSub(); };
+  try{ rec.start(); }catch(e){ micBlocked(); }
+}
+function afterSpeech(){ if(talkMode && !listening) setTimeout(startListening, 350); }
+micBtn.textContent = "TALK";
+micBtn.addEventListener("click", ()=>{
+  if(talkMode){ talkMode = false; micUI(); try{ rec && rec.abort(); }catch(e){} if(synth) synth.cancel(); tip(""); return; }
+  if(!SR){ micBlocked(); return; }
+  talkMode = true; micUI(); tip(""); if(synth) synth.cancel(); startListening();
+});
+
+/* clock */
+function tick(){ const d=new Date(); document.getElementById("clock").textContent=d.toLocaleTimeString("en-GB"); document.getElementById("date").textContent=d.toLocaleDateString("en-GB",{weekday:"short",day:"numeric",month:"short",year:"numeric"}); }
+tick(); setInterval(tick,1000);
+
+/* ============================== CANVAS: BACKGROUND ============================== */
+const bg = document.getElementById("bg"), bx = bg.getContext("2d");
+let hexLayer = null, parts = [];
+function sizeBg(){
+  const dpr = Math.min(2, window.devicePixelRatio||1); bg.width = innerWidth*dpr; bg.height = innerHeight*dpr; bx.setTransform(dpr,0,0,dpr,0,0);
+  hexLayer = document.createElement("canvas"); hexLayer.width = bg.width; hexLayer.height = bg.height; const h = hexLayer.getContext("2d"); h.setTransform(dpr,0,0,dpr,0,0);
+  h.strokeStyle = "rgba(77,225,255,0.045)"; h.lineWidth = 1; const r = 22, w = Math.sqrt(3)*r;
+  for(let y=0, row=0; y<innerHeight+r*2; y+=r*1.5, row++) for(let x=(row%2?w/2:0); x<innerWidth+w; x+=w){
+    h.beginPath(); for(let i=0;i<6;i++){ const a=Math.PI/3*i+Math.PI/6; h.lineTo(x+r*Math.cos(a), y+r*Math.sin(a)); } h.closePath(); h.stroke(); }
+  parts = Array.from({length: Math.round(Math.min(90, innerWidth*innerHeight/16000))}, ()=>({x:Math.random()*innerWidth,y:Math.random()*innerHeight,v:.08+Math.random()*.25,r:Math.random()*1.4+.3,a:Math.random()*.5+.15}));
+}
+sizeBg(); addEventListener("resize", sizeBg);
+
+/* ============================== CANVAS: CORE ============================== */
+const cv = document.getElementById("core"), cx2 = cv.getContext("2d"), wrap = document.getElementById("coreWrap");
+let CW=0, CH=0;
+function sizeCore(){ const dpr=Math.min(2,window.devicePixelRatio||1); const r=wrap.getBoundingClientRect(); CW=r.width; CH=r.height; cv.width=Math.max(1,CW*dpr); cv.height=Math.max(1,CH*dpr); cx2.setTransform(dpr,0,0,dpr,0,0); }
+new ResizeObserver(sizeCore).observe(wrap); sizeCore();
+const T0 = performance.now(); const BOOT = 2600;
+const clamp0 = v => Math.max(0, v);
+const ease = x => { x = Math.min(1, clamp0(x)); return 1 - Math.pow(1 - x, 3); };
+let rot = [0,0,0], pulse = 0, lastT = T0;
+const rings = [
+  {f:.80, w:5, speed: .18, ticks:72, gaps:[[.05,.18],[.55,.62]]},
+  {f:.66, w:7, speed:-.30, ticks:36, gaps:[[.30,.36],[.80,.92]]},
+  {f:.52, w:4, speed: .55, ticks:24, gaps:[[.10,.14],[.42,.50],[.74,.78]]},
+];
+function frame(now){
+  const dt = Math.min(.05,(now-lastT)/1000); lastT = now;
+  const motion = reduceMotion ? 0 : (focus ? .3 : 1);
+  // background
+  bx.clearRect(0,0,innerWidth,innerHeight); if(hexLayer) bx.drawImage(hexLayer,0,0,innerWidth,innerHeight);
+  for(const p of parts){ p.y -= p.v*motion; p.x += Math.sin((now/4000)+p.y/90)*.08*motion; if(p.y< -4){ p.y=innerHeight+4; p.x=Math.random()*innerWidth; }
+    bx.beginPath(); bx.fillStyle=`rgba(160,230,255,${p.a})`; bx.arc(p.x,p.y,clamp0(p.r),0,Math.PI*2); bx.fill(); }
+  // core
+  const ctx = cx2; ctx.clearRect(0,0,CW,CH);
+  const R = clamp0(Math.min(CW,CH)/2 - 6); const x = CW/2, y = CH/2;
+  const b = reduceMotion ? 1 : ease((now-T0)/BOOT);
+  if(speaking) level = Math.max(level*.9, .35 + Math.random()*.5); else level *= .9;
+  pulse += (level - pulse) * .2;
+  for(let i=0;i<3;i++) rot[i] += rings[i].speed * dt * motion;
+  // glow
+  const coreR = clamp0(R*.30*(.6+.4*b)*(1+pulse*.18));
+  const g = ctx.createRadialGradient(x,y,0,x,y,clamp0(coreR*2.6));
+  g.addColorStop(0,`rgba(225,250,255,${.95*b})`); g.addColorStop(.18,`rgba(77,225,255,${.85*b})`); g.addColorStop(.5,`rgba(77,225,255,${.18*b})`); g.addColorStop(1,"rgba(77,225,255,0)");
+  ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x,y,clamp0(coreR*2.6),0,Math.PI*2); ctx.fill();
+  ctx.fillStyle = `rgba(240,252,255,${b})`; ctx.beginPath(); ctx.arc(x,y,clamp0(coreR*.42),0,Math.PI*2); ctx.fill();
+  // inner hex lattice in the core
+  ctx.strokeStyle = `rgba(4,20,40,${.35*b})`; ctx.lineWidth = 1;
+  ctx.beginPath(); for(let i=0;i<6;i++){ const a=Math.PI/3*i + rot[2]*.5; ctx.lineTo(x+coreR*.75*Math.cos(a), y+coreR*.75*Math.sin(a)); } ctx.closePath(); ctx.stroke();
+  // rings
+  ctx.lineCap = "butt";
+  rings.forEach((rg,i)=>{
+    const rb = ease(((now-T0) - i*260)/(BOOT*.8)); const bb = reduceMotion?1:rb;
+    const rr = clamp0(R*rg.f*(.85+.15*bb));
+    const span = Math.PI*2*clamp0(bb);
+    ctx.save(); ctx.translate(x,y); ctx.rotate(rot[i]);
+    ctx.strokeStyle = `rgba(77,225,255,${.85*bb})`; ctx.shadowColor = "rgba(77,225,255,.8)"; ctx.shadowBlur = 12;
+    ctx.lineWidth = rg.w;
+    let start = 0; const segs = [];
+    let prev = 0; for(const [a0,a1] of rg.gaps){ segs.push([prev,a0]); prev=a1; } segs.push([prev,1]);
+    for(const [a0,a1] of segs){ const s0=a0*Math.PI*2, s1=Math.min(a1*Math.PI*2, span); if(s1>s0){ ctx.beginPath(); ctx.arc(0,0,rr,s0,s1); ctx.stroke(); } }
+    ctx.shadowBlur = 0; ctx.lineWidth = 1.5; ctx.strokeStyle = `rgba(200,245,255,${.55*bb})`;
+    const tl = i===0 ? 9 : 6;
+    for(let k=0;k<rg.ticks;k++){ const a=k/rg.ticks*Math.PI*2; if(a>span) break; const long = k%(i===0?6:3)===0;
+      const r1 = clamp0(rr + rg.w/2 + 3), r2 = clamp0(r1 + (long?tl:tl*.45));
+      ctx.beginPath(); ctx.moveTo(r1*Math.cos(a), r1*Math.sin(a)); ctx.lineTo(r2*Math.cos(a), r2*Math.sin(a)); ctx.stroke(); }
+    ctx.restore();
+  });
+  // waveform ring
+  const wr = clamp0(R*.93), N = 160, amp = (4 + pulse*R*.07) * b;
+  ctx.beginPath();
+  for(let k=0;k<=N;k++){ const a = k/N*Math.PI*2; const n = Math.sin(a*8+now/180)*.5 + Math.sin(a*13-now/240)*.35 + Math.sin(a*21+now/90)*.15;
+    const rr = clamp0(wr + n*amp); ctx.lineTo(x+rr*Math.cos(a), y+rr*Math.sin(a)); }
+  ctx.closePath(); ctx.strokeStyle = `rgba(77,225,255,${(.25+pulse*.6)*b})`; ctx.lineWidth = 1.6; ctx.stroke();
+  // outer faint ring with amber marker when decisions pending
+  ctx.beginPath(); ctx.arc(x,y,clamp0(R*.99),0,Math.PI*2*clamp0(b)); ctx.strokeStyle="rgba(77,225,255,.12)"; ctx.lineWidth=1; ctx.stroke();
+  if(SNAP.pending.length){ const a = -Math.PI/2 + now/3000*motion; ctx.beginPath(); ctx.arc(x,y,clamp0(R*.99),a,a+.25); ctx.strokeStyle=`rgba(255,181,71,${.8*b})`; ctx.lineWidth=3; ctx.stroke(); }
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+/* ============================== BOOT ============================== */
+refresh();
+document.getElementById("reply").textContent = "";
+setTimeout(()=>{ document.getElementById("sub").textContent="Initialising…"; }, 0);
+setTimeout(()=>{ say(`Initialising… Systems online. ${greet()}, ${CFG.user}. ${plural(SNAP.pending.length,"decision")} are waiting on you.`.replace("1 decisions are","1 decision is")); setSub(); }, reduceMotion?0:1500);
+</script>
+
+</html>
