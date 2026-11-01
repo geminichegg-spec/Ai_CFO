@@ -1067,7 +1067,7 @@ async function claudeBrain(msgs, {onText, signal, tools}={}){
 }
 /* One-tap setup link: keys in the #hash are saved to this device, then wiped from the address bar (the hash never reaches any server). */
 (function(){ try{ const h = new URLSearchParams(location.hash.slice(1)); let got = false;
-  for(const [param, store] of [["abhi","atlas-key-abhi"],["groq","atlas-key-groq"],["claude","atlas-key-claude"]]){ const v = h.get(param); if(v){ LS.set(store, v.trim()); got = true; } }
+  for(const [param, store] of [["abhi","atlas-key-abhi"],["groq","atlas-key-groq"],["claude","atlas-key-claude"],["relay","atlas-abhi-relay"]]){ const v = h.get(param); if(v){ LS.set(store, v.trim()); got = true; } }
   if(h.get("groq")) LS.set("atlas-provider","groq"); else if(h.get("claude") && !LS.get("atlas-key-groq")) LS.set("atlas-provider","claude");
   if(got){ history.replaceState(null, "", location.pathname + location.search); window.__keysFromLink = true; } }catch(e){} })();
 function keyBrainSetup(){
@@ -1202,14 +1202,16 @@ const ABHI_VOICES = [
   ["google|hi-IN-Neural2-B","Hindi male (Neural2-B)"],
   ["gemini|Charon","Gemini male, informative (Charon)"],
 ];
-const abhiKey = () => (!inClaude && LS.get("atlas-key-abhi")) || "";
+const abhiKey = () => (!inClaude && (LS.get("atlas-key-abhi") || LS.get("atlas-abhi-relay"))) || "";
 async function abhiClip(text){
   const custom = LS.get("atlas-abhi-custom").trim();
   const [provider, voiceId] = custom ? ["eleven", custom] : (LS.get("atlas-abhi-voice") || ABHI_VOICES[0][0]).split("|");
   const body = {text: speakable(text).slice(0,5000), voiceId, provider};
   if(provider==="eleven") body.voice_settings = {model_id:"eleven_multilingual_v2"};
   let r;
-  for(const host of ["https://app.abhibots.com/api","https://abhibots.com/api"]){
+  const relay = LS.get("atlas-abhi-relay");
+  if(relay){ try{ r = await fetch(relay,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)}); }catch(e){ throw new Error("the voice relay could not be reached"); } }
+  else for(const host of ["https://app.abhibots.com/api","https://abhibots.com/api"]){
     try{ r = await fetch(host+"/tts/generate",{method:"POST",headers:{"X-API-Key":abhiKey(),"Content-Type":"application/json"},body:JSON.stringify(body)}); break; }catch(e){}
   }
   if(!r) throw new Error("AbhiBots blocks voice requests from websites (CORS)");
