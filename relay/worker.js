@@ -1,6 +1,7 @@
 // Atlas voice relay: a Cloudflare Worker that forwards text-to-speech requests to AbhiBots.
 // Your AbhiBots key is stored as a Worker secret named ABHI_KEY, so it never appears in the web page.
-const ALLOWED_ORIGINS = ["https://geminichegg-spec.github.io"];
+// "null" is the origin Chrome sends when index.html is opened as a local file.
+const ALLOWED_ORIGINS = ["https://geminichegg-spec.github.io", "null"];
 const UPSTREAMS = ["https://app.abhibots.com/api/tts/generate", "https://abhibots.com/api/tts/generate"];
 
 function cors(origin) {
