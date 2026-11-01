@@ -309,6 +309,7 @@ button{cursor:pointer}
   </form>
 </div>
 
+<script src="keys.js"></script>
 <script>
 "use strict";
 /* ============================== CONFIG ============================== */
@@ -986,7 +987,9 @@ function setBrainBadge(){ const b=document.getElementById("brain"); b.classList.
 let brainName = "Brain: Claude";
 
 /* --- Key-based brain for the hosted page (Groq or Claude API). The key lives only in this browser's storage. --- */
-const LS = { get(k){ try{ return localStorage.getItem(k)||""; }catch(e){ return ""; } }, set(k,v){ try{ v ? localStorage.setItem(k,v) : localStorage.removeItem(k); }catch(e){} } };
+const BUILTIN = (window.ATLAS_KEYS||{});  /* optional keys.js next to the page (private repo only) */
+const BUILTIN_MAP = {"atlas-key-abhi":"abhi","atlas-key-groq":"groq","atlas-key-claude":"claude","atlas-abhi-relay":"relay"};
+const LS = { get(k){ let v=""; try{ v = localStorage.getItem(k)||""; }catch(e){} return v || (BUILTIN_MAP[k] && BUILTIN[BUILTIN_MAP[k]]) || ""; }, set(k,v){ try{ v ? localStorage.setItem(k,v) : localStorage.removeItem(k); }catch(e){} } };
 const PROVIDERS = {
   groq:   {label:"Groq", models:["llama-3.3-70b-versatile","openai/gpt-oss-120b","openai/gpt-oss-20b","llama-3.1-8b-instant"]},
   claude: {label:"Claude", models:["claude-opus-5-5","claude-sonnet-5-5","claude-haiku-5-5"]},
