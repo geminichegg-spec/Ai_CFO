@@ -1065,6 +1065,11 @@ async function claudeBrain(msgs, {onText, signal, tools}={}){
   if(!text) throw brainErr("empty_completion");
   return {text};
 }
+/* One-tap setup link: keys in the #hash are saved to this device, then wiped from the address bar (the hash never reaches any server). */
+(function(){ try{ const h = new URLSearchParams(location.hash.slice(1)); let got = false;
+  for(const [param, store] of [["abhi","atlas-key-abhi"],["groq","atlas-key-groq"],["claude","atlas-key-claude"]]){ const v = h.get(param); if(v){ LS.set(store, v.trim()); got = true; } }
+  if(h.get("groq")) LS.set("atlas-provider","groq"); else if(h.get("claude") && !LS.get("atlas-key-groq")) LS.set("atlas-provider","claude");
+  if(got){ history.replaceState(null, "", location.pathname + location.search); window.__keysFromLink = true; } }catch(e){} })();
 function keyBrainSetup(){
   const p = LS.get("atlas-provider") || "groq";
   if(LS.get("atlas-key-"+p)){ brain = p==="claude" ? claudeBrain : groqBrain; brainTools = true; brainName = "Brain: "+PROVIDERS[p].label; }
