@@ -294,17 +294,17 @@ button{cursor:pointer}
 <div class="sheet" id="brainDlg" hidden role="dialog" aria-modal="true" aria-label="AI brain settings">
   <form class="dlg" id="bForm">
     <h3>AI BRAIN</h3>
-    <p>Connect a model so Atlas can answer any question about the books. Your key is saved only in this browser on this device.</p>
+    <p>Connect a model so Atlas can answer any question, and a voice key so it speaks naturally. Keys are saved only in this browser on this device.</p>
     <label>Provider<select id="bProv"><option value="groq">Groq (free, fastest)</option><option value="claude">Claude API</option></select></label>
     <label>API key<input id="bKey" type="password" autocomplete="off" spellcheck="false"></label>
     <label>Model<select id="bModel"></select></label>
     <div class="hint" id="bHelp"></div>
-    <label>ElevenLabs key (optional, for a natural voice and better listening)<input id="bXi" type="password" autocomplete="off" spellcheck="false"></label>
-    <label>Atlas voice<select id="bVoice"></select></label>
-    <div class="hint">Get a key at <a href="https://elevenlabs.io/app/settings/api-keys" target="_blank" rel="noopener">elevenlabs.io</a>. It needs the Text to Speech and Speech to Text permissions.</div>
-    <label>AbhiBots key (optional, voice out; used instead of ElevenLabs voice when set)<input id="bAbhi" type="password" autocomplete="off" spellcheck="false"></label>
-    <label>AbhiBots voice<select id="bAbhiVoice"></select></label>
-    <label>Or an AbhiBots / ElevenLabs voice ID from your dashboard<input id="bAbhiCustom" autocomplete="off" spellcheck="false" placeholder="Optional, overrides the list above"></label>
+    <label hidden>ElevenLabs key<input id="bXi" type="password" autocomplete="off" spellcheck="false"></label>
+    <label hidden>ElevenLabs voice<select id="bVoice"></select></label>
+    
+    <label>Voice API key (AbhiBots)<input id="bAbhi" type="password" autocomplete="off" spellcheck="false"></label>
+    <label>Atlas voice<select id="bAbhiVoice"></select></label>
+    <label>Or a voice ID from your AbhiBots dashboard<input id="bAbhiCustom" autocomplete="off" spellcheck="false" placeholder="Optional, overrides the list above"></label>
     <div class="row"><button type="button" class="btn" id="bForget">Remove keys</button><span style="flex:1"></span><button type="button" class="btn" id="bCancel">Cancel</button><button class="btn" type="submit">Connect</button></div>
   </form>
 </div>
@@ -1096,7 +1096,7 @@ document.getElementById("brain").addEventListener("click", ()=>{
   document.getElementById("bProv").value = LS.get("atlas-provider")||"groq"; fillModels(); dlg.hidden = false; document.getElementById("bKey").focus(); });
 document.getElementById("bProv").addEventListener("change", fillModels);
 document.getElementById("bCancel").addEventListener("click", ()=>{ dlg.hidden = true; });
-document.getElementById("bForget").addEventListener("click", ()=>{ const p=document.getElementById("bProv").value; LS.set("atlas-key-"+p,""); LS.set("atlas-key-11labs",""); LS.set("atlas-key-abhi",""); keyBrainSetup(); dlg.hidden = true; say(`${PROVIDERS[p].label}, ElevenLabs and AbhiBots keys removed from this device. Back to built-in commands.`); });
+document.getElementById("bForget").addEventListener("click", ()=>{ const p=document.getElementById("bProv").value; LS.set("atlas-key-"+p,""); LS.set("atlas-key-11labs",""); LS.set("atlas-key-abhi",""); keyBrainSetup(); dlg.hidden = true; say(`${PROVIDERS[p].label} and voice keys removed from this device. Back to built-in commands.`); });
 document.getElementById("bForm").addEventListener("submit", e=>{ e.preventDefault();
   const p=document.getElementById("bProv").value, k=document.getElementById("bKey").value.trim();
   if(k) LS.set("atlas-key-"+p, k);
