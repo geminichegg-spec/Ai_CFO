@@ -1202,7 +1202,8 @@ const ABHI_VOICES = [
   ["google|hi-IN-Neural2-B","Hindi male (Neural2-B)"],
   ["gemini|Charon","Gemini male, informative (Charon)"],
 ];
-const abhiKey = () => (!inClaude && (LS.get("atlas-key-abhi") || LS.get("atlas-abhi-relay"))) || "";
+let abhiDown = false;
+const abhiKey = () => (!abhiDown && !inClaude && (LS.get("atlas-key-abhi") || LS.get("atlas-abhi-relay"))) || "";
 async function abhiClip(text){
   const custom = LS.get("atlas-abhi-custom").trim();
   const [provider, voiceId] = custom ? ["eleven", custom] : (LS.get("atlas-abhi-voice") || ABHI_VOICES[0][0]).split("|");
@@ -1214,7 +1215,7 @@ async function abhiClip(text){
   else for(const host of ["https://app.abhibots.com/api","https://abhibots.com/api"]){
     try{ r = await fetch(host+"/tts/generate",{method:"POST",headers:{"X-API-Key":abhiKey(),"Content-Type":"application/json"},body:JSON.stringify(body)}); break; }catch(e){}
   }
-  if(!r) throw new Error("AbhiBots blocks voice requests from websites (CORS)");
+  if(!r){ abhiDown = true; throw new Error("AbhiBots blocks voice requests from websites, so your phone's Indian English voice is used"); }
   if(r.status===401) throw new Error("key");
   if(r.status===402) throw new Error("out of AbhiBots credits");
   const ct = r.headers.get("content-type")||"";
