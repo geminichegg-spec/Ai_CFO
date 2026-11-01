@@ -1209,8 +1209,10 @@ async function abhiClip(text){
   const body = {text: speakable(text).slice(0,5000), voiceId, provider};
   if(provider==="eleven") body.voice_settings = {model_id:"eleven_multilingual_v2"};
   let r;
-  try{ r = await fetch("https://app.abhibots.com/api/tts/generate",{method:"POST",headers:{"X-API-Key":abhiKey(),"Content-Type":"application/json"},body:JSON.stringify(body)}); }
-  catch(e){ throw new Error("the page could not reach AbhiBots; they may not allow calls from websites"); }
+  for(const host of ["https://app.abhibots.com/api","https://abhibots.com/api"]){
+    try{ r = await fetch(host+"/tts/generate",{method:"POST",headers:{"X-API-Key":abhiKey(),"Content-Type":"application/json"},body:JSON.stringify(body)}); break; }catch(e){}
+  }
+  if(!r) throw new Error("AbhiBots blocks voice requests from websites (CORS)");
   if(r.status===401) throw new Error("key");
   if(r.status===402) throw new Error("out of AbhiBots credits");
   const ct = r.headers.get("content-type")||"";
