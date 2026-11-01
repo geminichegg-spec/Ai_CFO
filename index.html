@@ -178,7 +178,7 @@ button{cursor:pointer}
 .flow{display:flex;gap:6px;flex-wrap:wrap;align-items:center;justify-content:center;font-family:var(--f-display);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--mute);margin:2px 0 12px}
 .flow b{color:var(--cyan);font-weight:600}
 .split{display:grid;grid-template-columns:1fr 1fr;gap:18px}
-.dlg{margin:auto;width:100%;max-width:440px;background:var(--panel-solid);border:1px solid var(--line-strong);padding:16px;display:grid;gap:12px;box-shadow:0 0 60px rgba(77,225,255,.15)}
+.dlg{margin:auto;width:100%;max-width:440px;max-height:100%;overflow:auto;background:var(--panel-solid);border:1px solid var(--line-strong);padding:16px;display:grid;gap:12px;box-shadow:0 0 60px rgba(77,225,255,.15)}
 .dlg h3{margin:0;font-family:var(--f-display);letter-spacing:.24em;font-size:13px;color:var(--cyan)}
 .dlg p{margin:0;color:var(--mute);font-size:13px;line-height:1.45}
 .dlg label{display:grid;gap:5px;font-family:var(--f-display);font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--mute)}
@@ -299,7 +299,10 @@ button{cursor:pointer}
     <label>API key<input id="bKey" type="password" autocomplete="off" spellcheck="false"></label>
     <label>Model<select id="bModel"></select></label>
     <div class="hint" id="bHelp"></div>
-    <div class="row"><button type="button" class="btn" id="bForget">Remove key</button><span style="flex:1"></span><button type="button" class="btn" id="bCancel">Cancel</button><button class="btn" type="submit">Connect</button></div>
+    <label>ElevenLabs key (optional, for a natural voice and better listening)<input id="bXi" type="password" autocomplete="off" spellcheck="false"></label>
+    <label>Atlas voice<select id="bVoice"></select></label>
+    <div class="hint">Get a key at <a href="https://elevenlabs.io/app/settings/api-keys" target="_blank" rel="noopener">elevenlabs.io</a>. It needs the Text to Speech and Speech to Text permissions.</div>
+    <div class="row"><button type="button" class="btn" id="bForget">Remove keys</button><span style="flex:1"></span><button type="button" class="btn" id="bCancel">Cancel</button><button class="btn" type="submit">Connect</button></div>
   </form>
 </div>
 
@@ -523,19 +526,9 @@ function say(text, cardHTML=""){
     el.textContent = text.slice(0,i); el.appendChild(cur);
     if(i>=text.length){ clearInterval(typeTimer); setTimeout(()=>{ cur.remove(); if(!synthActive) speaking=false; }, 600); }
   }, 18);
-  if(voiceOn && synth){
-    try{
-      synth.cancel();
-      const u = new SpeechSynthesisUtterance(speakable(text));
-      const v = pickVoice(); if(v) u.voice = v;
-      u.lang = "en-GB"; u.pitch = .82; u.rate = 1;
-      u.onstart = ()=>{ synthActive = true; speaking = true; };
-      u.onboundary = ()=>{ level = 1; };
-      u.onend = u.onerror = ()=>{ synthActive = false; speaking = false; afterSpeech(); };
-      synth.speak(u);
-    }catch(e){}
-  }
+  if(voiceOn){ stopSpeech(); speakChunk(text, true); }
 }
+function stopSpeech(){ if(synth) synth.cancel(); utterLeft = 0; if(typeof xiStop==="function") xiStop(); }
 let synthActive = false;
 
 /* ============================== UI RENDER ============================== */
@@ -1088,17 +1081,20 @@ const dlg = document.getElementById("brainDlg");
 function fillModels(){ const p=document.getElementById("bProv").value, sel=document.getElementById("bModel"), cur=LS.get("atlas-model-"+p)||PROVIDERS[p].models[0];
   sel.innerHTML = PROVIDERS[p].models.map(m=>`<option${m===cur?" selected":""}>${m}</option>`).join("");
   document.getElementById("bKey").value = ""; document.getElementById("bKey").placeholder = LS.get("atlas-key-"+p) ? "Key saved on this device. Paste to replace." : (p==="groq"?"gsk_…":"sk-ant-…");
+  document.getElementById("bXi").value = ""; document.getElementById("bXi").placeholder = LS.get("atlas-key-11labs") ? "Key saved on this device. Paste to replace." : "Optional";
+  const vcur = LS.get("atlas-voice-11labs")||XI_VOICES[0][0]; document.getElementById("bVoice").innerHTML = XI_VOICES.map(([id,n])=>`<option value="${id}"${id===vcur?" selected":""}>${n}</option>`).join("");
   document.getElementById("bHelp").innerHTML = p==="groq" ? 'Get a free key at <a href="https://console.groq.com/keys" target="_blank" rel="noopener">console.groq.com/keys</a>.' : 'Get a key at <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">console.anthropic.com</a> (paid per use).'; }
 document.getElementById("brain").addEventListener("click", ()=>{
   if(inClaude){ tip("Inside Claude, Atlas already thinks with your Claude account. No key needed."); return; }
   document.getElementById("bProv").value = LS.get("atlas-provider")||"groq"; fillModels(); dlg.hidden = false; document.getElementById("bKey").focus(); });
 document.getElementById("bProv").addEventListener("change", fillModels);
 document.getElementById("bCancel").addEventListener("click", ()=>{ dlg.hidden = true; });
-document.getElementById("bForget").addEventListener("click", ()=>{ const p=document.getElementById("bProv").value; LS.set("atlas-key-"+p,""); keyBrainSetup(); dlg.hidden = true; say(`${PROVIDERS[p].label} key removed from this device. Back to built-in commands.`); });
+document.getElementById("bForget").addEventListener("click", ()=>{ const p=document.getElementById("bProv").value; LS.set("atlas-key-"+p,""); LS.set("atlas-key-11labs",""); keyBrainSetup(); dlg.hidden = true; say(`${PROVIDERS[p].label} and ElevenLabs keys removed from this device. Back to built-in commands.`); });
 document.getElementById("bForm").addEventListener("submit", e=>{ e.preventDefault();
   const p=document.getElementById("bProv").value, k=document.getElementById("bKey").value.trim();
   if(k) LS.set("atlas-key-"+p, k);
-  if(!LS.get("atlas-key-"+p)){ document.getElementById("bHelp").textContent = "Paste a key first."; return; }
+  const xk = document.getElementById("bXi").value.trim(); if(xk) LS.set("atlas-key-11labs", xk); LS.set("atlas-voice-11labs", document.getElementById("bVoice").value);
+  if(!LS.get("atlas-key-"+p)){ if(xk){ dlg.hidden = true; say(`ElevenLabs voice connected, ${CFG.user}. Add a Groq or Claude key when you want me to answer anything.`); return; } document.getElementById("bHelp").textContent = "Paste a key first."; return; }
   LS.set("atlas-provider", p); LS.set("atlas-model-"+p, document.getElementById("bModel").value);
   keyBrainSetup(); dlg.hidden = true; turns = [];
   say(`${PROVIDERS[p].label} brain connected, ${CFG.user}. Ask me anything about the books.`); });
@@ -1112,6 +1108,10 @@ function setReply(text, done){
 /* speech queue: speak whole sentences while the answer streams */
 let utterLeft = 0;
 function speakChunk(t, last){
+  if(voiceOn && t.trim() && xiKey()){ xiSpeak(t, last); return; }
+  browserSpeak(t, last);
+}
+function browserSpeak(t, last){
   if(!voiceOn || !synth || !t.trim()){ if(last && utterLeft===0){ speaking=false; afterSpeech(); } return; }
   const u = new SpeechSynthesisUtterance(speakable(t)); const v = pickVoice(); if(v) u.voice = v;
   u.lang="en-GB"; u.pitch=.82; u.rate=1; utterLeft++; synthActive=true; speaking=true;
@@ -1131,7 +1131,7 @@ async function ask(raw){
   tip("");
   if(!brain){ run(v); afterSpeechIfSilent(); return; }
   if(brainCtl) brainCtl.abort();
-  if(synth) synth.cancel(); utterLeft = 0;
+  stopSpeech();
   const ctl = new AbortController(); brainCtl = ctl;
   turns.push({role:"user",content:v}); turns = turns.slice(-12); while(turns.length && turns[0].role!=="user") turns.shift();
   const msgs = [{role:"user",content:persona()}, ...turns.slice(0,-1), {role:"user",content:`Live books snapshot (JSON):\n${snapshotText()}\n\n${CFG.user} says: ${v}`}];
@@ -1156,7 +1156,65 @@ async function ask(raw){
     run(v); afterSpeechIfSilent();
   }finally{ if(brainCtl===ctl) brainCtl=null; setSub(); }
 }
-function afterSpeechIfSilent(){ if(!(voiceOn && synth)) setTimeout(afterSpeech, 800); }
+function afterSpeechIfSilent(){ if(!voiceOn || (!synth && !xiKey())) setTimeout(afterSpeech, 800); }
+
+/* ============================== ELEVENLABS VOICE (optional, hosted page) ==============================
+   Voice out: text-to-speech, played sentence by sentence. Voice in: record from the mic, transcribe with Scribe. */
+const XI = "https://api.elevenlabs.io/v1";
+const XI_VOICES = [["JBFqnCBsd6RMkjVDRZzb","George (British, warm)"],["onwK4e9ZLuTAKqWW03F9","Daniel (British, broadcaster)"],["pqHfZKP75CvOlQylNhV4","Bill (calm, older)"],["EXAVITQu4vr4xnSDxMaL","Sarah (soft, American)"]];
+const xiKey = () => (!inClaude && LS.get("atlas-key-11labs")) || "";
+let xiQueue = Promise.resolve(), xiAudio = null, xiGen = 0, xiPending = 0;
+function xiStop(){ xiGen++; xiPending = 0; if(xiAudio){ try{ xiAudio.pause(); }catch(e){} xiAudio = null; } }
+function xiSpeak(text, last){
+  const gen = xiGen; xiPending++;
+  const clip = fetch(`${XI}/text-to-speech/${LS.get("atlas-voice-11labs")||XI_VOICES[0][0]}?output_format=mp3_44100_128`,{method:"POST",
+      headers:{"xi-api-key":xiKey(),"Content-Type":"application/json"},
+      body:JSON.stringify({text:speakable(text), model_id:"eleven_flash_v2_5"})})
+    .then(r=>{ if(r.status===401) throw new Error("key"); if(!r.ok) throw new Error("http "+r.status); return r.blob(); });
+  xiQueue = xiQueue.then(async ()=>{
+    let blob; try{ blob = await clip; }catch(e){ if(gen===xiGen) tip(e.message==="key" ? "ElevenLabs rejected the key. Tap the Brain badge to fix it." : "ElevenLabs voice failed, using the browser voice."); if(gen===xiGen && e.message!=="key") browserSpeak(text); return; }
+    if(gen!==xiGen) return;
+    await new Promise(res=>{ const url = URL.createObjectURL(blob); const a = new Audio(url); xiAudio = a; speaking = true;
+      const done = ()=>{ URL.revokeObjectURL(url); res(); }; a.onended = done; a.onerror = done; a.play().catch(done); });
+  }).finally(()=>{ if(gen!==xiGen) return; xiPending = Math.max(0,xiPending-1); if(xiPending===0){ speaking = false; xiAudio = null; if(last) afterSpeech(); } });
+}
+
+/* recording + speech-to-text */
+let xiRec = null, xiStream = null;
+async function xiListen(){
+  if(listening) return;
+  if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){ micBlocked("This browser can't record audio. Open the page in the Chrome app."); return; }
+  try{ xiStream = await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true}}); }
+  catch(e){ micBlocked(e && e.name==="NotAllowedError" ? undefined : "The microphone could not start: "+(e && e.message || e)); return; }
+  listening = true; heard = false;
+  const ctx = new (window.AudioContext||window.webkitAudioContext)(); const src = ctx.createMediaStreamSource(xiStream);
+  const an = ctx.createAnalyser(); an.fftSize = 1024; src.connect(an); const buf = new Uint8Array(an.fftSize);
+  const mime = ["audio/webm;codecs=opus","audio/webm","audio/mp4"].find(m=>window.MediaRecorder && MediaRecorder.isTypeSupported(m)) || "";
+  const chunks = []; xiRec = new MediaRecorder(xiStream, mime?{mimeType:mime}:undefined);
+  xiRec.ondataavailable = e=>{ if(e.data.size) chunks.push(e.data); };
+  let spoke = false, lastLoud = performance.now(); const t0 = performance.now();
+  tip("Listening… speak now."); document.getElementById("sub").textContent = "Listening";
+  const tick = ()=>{ if(!xiRec || xiRec.state!=="recording") return;
+    an.getByteTimeDomainData(buf); let peak = 0; for(const v of buf) peak = Math.max(peak, Math.abs(v-128)); level = Math.min(1, peak/40);
+    const now = performance.now(); if(peak>14){ if(!spoke) tip("Hearing you…"); spoke = true; lastLoud = now; }
+    if((spoke && now-lastLoud>1300) || (!spoke && now-t0>7000) || now-t0>20000) xiRec.stop(); else requestAnimationFrame(tick); };
+  xiRec.onstop = async ()=>{
+    xiStream.getTracks().forEach(t=>t.stop()); ctx.close().catch(()=>{}); listening = false; setSub();
+    if(!talkMode){ tip(""); return; }
+    if(!spoke){ talkMode=false; micUI(); tip("I didn't hear anything. Tap TALK and speak."); return; }
+    tip("Transcribing…");
+    const fd = new FormData(); fd.append("model_id","scribe_v1"); fd.append("file", new Blob(chunks,{type:mime||"audio/webm"}), "speech."+(mime.includes("mp4")?"m4a":"webm"));
+    try{
+      const r = await fetch(`${XI}/speech-to-text`,{method:"POST",headers:{"xi-api-key":xiKey()},body:fd});
+      if(r.status===401) throw new Error("ElevenLabs rejected the key. Tap the Brain badge to fix it.");
+      if(!r.ok) throw new Error("Transcription failed (HTTP "+r.status+"). Tap TALK to try again.");
+      const v = ((await r.json()).text||"").trim();
+      if(!v){ tip("I couldn't make that out. Tap TALK and try again."); talkMode=false; micUI(); return; }
+      heard = true; tip(""); ask(v);
+    }catch(e){ talkMode=false; micUI(); tip(e.message); }
+  };
+  xiRec.start(); requestAnimationFrame(tick);
+}
 
 /* ============================== MICROPHONE: hands-free talk mode ============================== */
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -1171,6 +1229,7 @@ function micBlocked(reason){
 }
 const inAppBrowser = /; wv\)|FBAN|FBAV|Instagram|Line\//i.test(navigator.userAgent);
 function startListening(){
+  if(xiKey()){ xiListen(); return; }
   if(!SR){ micBlocked(inAppBrowser ? "This in-app browser can't listen. Open the link in the Chrome app itself (⋮ menu, Open in Chrome)." : "This browser has no speech recognition. Use Chrome on Android, or the keyboard mic."); return; }
   if(listening) return;
   rec = new SR(); rec.lang = "en-IN"; rec.interimResults = true; rec.continuous = false; rec.maxAlternatives = 1; heard = false;
@@ -1195,9 +1254,8 @@ function startListening(){
 function afterSpeech(){ if(talkMode && !listening) setTimeout(startListening, 350); }
 micBtn.textContent = "TALK";
 micBtn.addEventListener("click", ()=>{
-  if(talkMode){ talkMode = false; micUI(); try{ rec && rec.abort(); }catch(e){} if(synth) synth.cancel(); tip(""); return; }
-  if(!SR){ micBlocked(); return; }
-  talkMode = true; micUI(); tip(""); if(synth) synth.cancel(); startListening();
+  if(talkMode){ talkMode = false; micUI(); try{ rec && rec.abort(); }catch(e){} try{ xiRec && xiRec.state==="recording" && xiRec.stop(); }catch(e){} stopSpeech(); tip(""); return; }
+  talkMode = true; micUI(); tip(""); stopSpeech(); startListening();
 });
 
 /* clock */
