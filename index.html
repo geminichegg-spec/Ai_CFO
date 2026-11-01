@@ -295,9 +295,10 @@ button{cursor:pointer}
   <form class="dlg" id="bForm">
     <h3>AI BRAIN</h3>
     <p>Connect a model so Atlas can answer any question, and a voice key so it speaks naturally. Keys are saved only in this browser on this device.</p>
-    <label>Provider<select id="bProv"><option value="groq">Groq (free, fastest)</option><option value="claude">Claude API</option></select></label>
+    <label>Provider<select id="bProv"><option value="gemini">Google Gemini (voice + brain)</option><option value="groq">Groq (free, fastest)</option><option value="claude">Claude API</option></select></label>
     <label>API key<input id="bKey" type="password" autocomplete="off" spellcheck="false"></label>
     <label>Model<select id="bModel"></select></label>
+    <label id="bGemVoiceL">Gemini voice (TALK mode)<select id="bGemVoice"></select></label>
     <div class="hint" id="bHelp"></div>
     <label hidden>ElevenLabs key<input id="bXi" type="password" autocomplete="off" spellcheck="false"></label>
     <label hidden>ElevenLabs voice<select id="bVoice"></select></label>
@@ -988,9 +989,10 @@ let brainName = "Brain: Claude";
 
 /* --- Key-based brain for the hosted page (Groq or Claude API). The key lives only in this browser's storage. --- */
 const BUILTIN = (window.ATLAS_KEYS||{});  /* optional keys.js next to the page (private repo only) */
-const BUILTIN_MAP = {"atlas-key-abhi":"abhi","atlas-key-groq":"groq","atlas-key-claude":"claude","atlas-abhi-relay":"relay"};
+const BUILTIN_MAP = {"atlas-key-gemini":"gemini","atlas-key-abhi":"abhi","atlas-key-groq":"groq","atlas-key-claude":"claude","atlas-abhi-relay":"relay"};
 const LS = { get(k){ let v=""; try{ v = localStorage.getItem(k)||""; }catch(e){} return v || (BUILTIN_MAP[k] && BUILTIN[BUILTIN_MAP[k]]) || ""; }, set(k,v){ try{ v ? localStorage.setItem(k,v) : localStorage.removeItem(k); }catch(e){} } };
 const PROVIDERS = {
+  gemini: {label:"Gemini", models:["gemini-3.8-flash","gemini-3.5-flash-lite"]},
   groq:   {label:"Groq", models:["llama-3.3-70b-versatile","openai/gpt-oss-120b","openai/gpt-oss-20b","llama-3.1-8b-instant"]},
   claude: {label:"Claude", models:["claude-opus-5-5","claude-sonnet-5-5","claude-haiku-5-5"]},
 };
@@ -1068,14 +1070,150 @@ async function claudeBrain(msgs, {onText, signal, tools}={}){
   if(!text) throw brainErr("empty_completion");
   return {text};
 }
+/* ============================== GOOGLE GEMINI ==============================
+   Typed questions: Gemini text model with function calling (REST generateContent).
+   TALK: Gemini Live, one WebSocket for voice in, thinking, tools and voice out. The key stays in this browser. */
+const GEM = "https://generativelanguage.googleapis.com/v1beta";
+const GEM_LIVE_MODELS = ["gemini-3.8-live","gemini-3.1-flash-live-preview","gemini-2.5-flash-native-audio-preview-12-2025"];
+const GEM_VOICES = [["Charon","Charon (deep, informative)"],["Orus","Orus (firm)"],["Iapetus","Iapetus (clear)"],["Alnilam","Alnilam (firm)"],["Sadaltager","Sadaltager (knowledgeable)"],["Algenib","Algenib (gravelly)"],["Fenrir","Fenrir (excitable)"],["Puck","Puck (upbeat)"],["Kore","Kore (firm)"]];
+const gemKey = () => (!inClaude && LS.get("atlas-key-gemini")) || "";
+const gemDecl = tools => toolDefs(tools).map(t=>({name:t.name, description:t.description, parameters:t.schema}));
+async function geminiBrain(msgs, {onText, signal, tools}={}){
+  const key = gemKey(), model = LS.get("atlas-model-gemini") || PROVIDERS.gemini.models[0];
+  const contents = [];
+  for(const m of msgs.slice(1)){ const role = m.role==="assistant" ? "model" : "user"; const last = contents[contents.length-1];
+    if(last && last.role===role) last.parts[0].text += "\n\n"+m.content; else contents.push({role, parts:[{text:m.content}]}); }
+  const decl = gemDecl(tools);
+  let text = "";
+  for(let round=0; round<5; round++){
+    let res;
+    try{
+      res = await fetch(`${GEM}/models/${encodeURIComponent(model)}:generateContent`,{method:"POST",signal,
+        headers:{"Content-Type":"application/json","x-goog-api-key":key},
+        body:JSON.stringify({systemInstruction:{parts:[{text:msgs[0].content}]}, contents,
+          ...(decl.length ? {tools:[{functionDeclarations:decl}]} : {}), generationConfig:{temperature:0.4, maxOutputTokens:1024}})});
+    }catch(e){ if(signal && signal.aborted) throw brainErr("cancelled"); throw brainErr("upstream_error", String(e)); }
+    if(res.status===401||res.status===403) throw brainErr("bad_key","Gemini rejected the key");
+    if(res.status===429) throw brainErr("rate_limited","Gemini rate limit");
+    if(!res.ok){ const b = await res.text().catch(()=>""); if(res.status===400 && /API key/i.test(b)) throw brainErr("bad_key","Gemini rejected the key");
+      throw brainErr(res.status===404||/model/i.test(b)?"bad_model":"upstream_error", b.slice(0,200)); }
+    const data = await res.json(); const cand = data.candidates && data.candidates[0]; const parts = (cand && cand.content && cand.content.parts) || [];
+    const t = parts.filter(p=>p.text && !p.thought).map(p=>p.text).join("").trim();
+    if(t){ text = text ? text+" "+t : t; onText && onText({text}); }
+    const calls = parts.filter(p=>p.functionCall);
+    if(!calls.length) break;
+    contents.push({role:"model", parts});
+    const out = [];
+    for(const p of calls){ const fc = p.functionCall; let r;
+      try{ r = {result: await runTool(tools, fc.name, fc.args||{}, signal)}; }catch(e){ r = {error: String(e.message||e)}; }
+      out.push({functionResponse:{name:fc.name, ...(fc.id?{id:fc.id}:{}), response:r}}); }
+    contents.push({role:"user", parts:out});
+  }
+  if(!text) throw brainErr("empty_completion");
+  return {text};
+}
+
+/* ---- Gemini Live (TALK mode) ---- */
+const liveTools = () => [...TOOLS, {name:"get_books_snapshot", description:"Get the latest live books snapshot as JSON (cash, profit, trial balance, balance sheet, queue, debtors, creditors). Call it after changes or when unsure of a figure.",
+  inputSchema:{type:"object",properties:{}}, execute(){ return snapshotText(); }}];
+const geminiLiveOn = () => !!gemKey() && (LS.get("atlas-provider")||"gemini")==="gemini";
+let live = null;
+function b64FromBytes(u8){ let s=""; for(let i=0;i<u8.length;i+=0x8000) s += String.fromCharCode.apply(null, u8.subarray(i,i+0x8000)); return btoa(s); }
+function liveStop(msg){
+  const L = live; live = null; if(!L) return;
+  try{ L.proc && L.proc.disconnect(); }catch(e){} try{ L.stream && L.stream.getTracks().forEach(t=>t.stop()); }catch(e){}
+  try{ L.inCtx && L.inCtx.close(); }catch(e){} try{ L.outCtx && L.outCtx.close(); }catch(e){}
+  try{ L.ws && L.ws.close(); }catch(e){}
+  listening = false; speaking = false; talkMode = false; micUI(); setSub(); tip(msg||"");
+}
+function livePlay(L, b64){
+  const bin = atob(b64), n = bin.length>>1, f = new Float32Array(n); let sum = 0;
+  for(let i=0;i<n;i++){ let v = bin.charCodeAt(2*i) | (bin.charCodeAt(2*i+1)<<8); if(v>=32768) v -= 65536; f[i] = v/32768; sum += f[i]*f[i]; }
+  if(!n) return;
+  const buf = L.outCtx.createBuffer(1, n, 24000); buf.copyToChannel(f, 0);
+  const src = L.outCtx.createBufferSource(); src.buffer = buf; src.connect(L.outCtx.destination);
+  const at = Math.max(L.playT, L.outCtx.currentTime + 0.03); src.start(at); L.playT = at + buf.duration;
+  L.srcs.add(src); speaking = true; level = Math.min(1, Math.sqrt(sum/n)*6);
+  src.onended = ()=>{ L.srcs.delete(src); if(!L.srcs.size) speaking = false; };
+}
+function liveFlush(L){ for(const s of L.srcs){ try{ s.stop(); }catch(e){} } L.srcs.clear(); L.playT = 0; speaking = false; }
+function liveSetup(model){
+  return {setup:{model:"models/"+model,
+    generationConfig:{responseModalities:["AUDIO"], speechConfig:{voiceConfig:{prebuiltVoiceConfig:{voiceName: LS.get("atlas-gemini-voice")||GEM_VOICES[0][0]}}}},
+    systemInstruction:{parts:[{text: persona() + `\nVoice: speak English with a natural, warm Indian accent, like an experienced Indian CFO. If ${CFG.user} speaks Hindi or Hinglish, reply in the same language.\nLive books snapshot (JSON, at the start of this call; call get_books_snapshot for fresh figures after any change):\n${snapshotText()}`}]},
+    tools:[{functionDeclarations: gemDecl(liveTools())}],
+    inputAudioTranscription:{}, outputAudioTranscription:{}}};
+}
+async function liveStart(){
+  if(live) return;
+  if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){ micBlocked("This browser can't record audio. Open the page in the Chrome app."); return; }
+  let stream;
+  try{ stream = await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true, noiseSuppression:true, autoGainControl:true, channelCount:1}}); }
+  catch(e){ micBlocked(e && e.name==="NotAllowedError" ? undefined : "The microphone could not start: "+(e && e.message || e)); return; }
+  const AC = window.AudioContext || window.webkitAudioContext;
+  const L = live = {stream, srcs:new Set(), playT:0, ready:false, said:"", heardText:"", modelIdx:0};
+  L.outCtx = new AC({sampleRate:24000});
+  try{ L.inCtx = new AC({sampleRate:16000}); }catch(e){ L.inCtx = new AC(); }
+  const rate = L.inCtx.sampleRate;
+  const srcNode = L.inCtx.createMediaStreamSource(stream);
+  L.proc = L.inCtx.createScriptProcessor(2048, 1, 1);
+  L.proc.onaudioprocess = ev=>{
+    if(!L.ready || !L.ws || L.ws.readyState!==1) return;
+    const inp = ev.inputBuffer.getChannelData(0), pcm = new Int16Array(inp.length); let peak = 0;
+    for(let i=0;i<inp.length;i++){ const s = Math.max(-1, Math.min(1, inp[i])); pcm[i] = s<0 ? s*0x8000 : s*0x7fff; peak = Math.max(peak, Math.abs(s)); }
+    if(!speaking) level = Math.min(1, peak*3);
+    L.ws.send(JSON.stringify({realtimeInput:{audio:{data:b64FromBytes(new Uint8Array(pcm.buffer)), mimeType:"audio/pcm;rate="+rate}}}));
+  };
+  srcNode.connect(L.proc); const mute = L.inCtx.createGain(); mute.gain.value = 0; L.proc.connect(mute); mute.connect(L.inCtx.destination);
+  talkMode = true; micUI(); stopSpeech(); listening = true;
+  tip("Connecting to Gemini Live…"); document.getElementById("sub").textContent = "Connecting";
+  liveConnect(L);
+}
+function liveConnect(L){
+  const model = GEM_LIVE_MODELS[L.modelIdx];
+  const ws = L.ws = new WebSocket(`wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent?key=${encodeURIComponent(gemKey())}`);
+  ws.onopen = ()=>{ ws.send(JSON.stringify(liveSetup(model))); };
+  ws.onmessage = async ev=>{
+    if(live!==L) return;
+    let m; try{ m = JSON.parse(typeof ev.data==="string" ? ev.data : await ev.data.text()); }catch(e){ return; }
+    if(m.setupComplete){ L.ready = true; tip("Live with Gemini. Just talk. Tap STOP to end."); document.getElementById("sub").textContent = "Listening"; return; }
+    if(m.toolCall){
+      const out = [];
+      for(const fc of (m.toolCall.functionCalls||[])){ let r;
+        try{ r = {result: await runTool(liveTools(), fc.name, fc.args||{})}; }catch(e){ r = {error:String(e.message||e)}; }
+        out.push({id:fc.id, name:fc.name, response:r}); }
+      if(live===L && ws.readyState===1) ws.send(JSON.stringify({toolResponse:{functionResponses:out}}));
+      return;
+    }
+    if(m.goAway){ tip("Gemini will end this call soon. Tap TALK again if it stops."); }
+    const sc = m.serverContent; if(!sc) return;
+    if(sc.interrupted){ liveFlush(L); }
+    if(sc.inputTranscription && sc.inputTranscription.text){ L.heardText += sc.inputTranscription.text; document.getElementById("ask").placeholder = "You: "+L.heardText.trim().slice(-80); }
+    if(sc.modelTurn && sc.modelTurn.parts) for(const p of sc.modelTurn.parts){ if(p.inlineData && p.inlineData.data) livePlay(L, p.inlineData.data); }
+    if(sc.outputTranscription && sc.outputTranscription.text){
+      if(L.heardText){ document.getElementById("card").innerHTML = ""; L.said = ""; L.heardText = ""; }
+      L.said += sc.outputTranscription.text; setReply(L.said.trim()); }
+    if(sc.turnComplete){ if(L.said) setReply(L.said.trim(), true); L.said = ""; L.heardText = ""; document.getElementById("ask").placeholder = "Ask Atlas…"; }
+  };
+  ws.onerror = ()=>{};
+  ws.onclose = ev=>{
+    if(live!==L) return;
+    const why = String(ev.reason||"");
+    if(!L.ready && /model|not found|not supported/i.test(why) && L.modelIdx < GEM_LIVE_MODELS.length-1){ L.modelIdx++; liveConnect(L); return; }
+    if(!L.ready && /key|permission|auth|denied/i.test(why)){ liveStop("Gemini rejected the key. Tap the Brain badge and paste a fresh Gemini key."); return; }
+    liveStop(L.ready ? "Gemini Live ended. Tap TALK to start again." : "Gemini Live couldn't connect"+(why?": "+why.slice(0,120):"")+". Typed questions still work.");
+  };
+}
+
 /* One-tap setup link: keys in the #hash are saved to this device, then wiped from the address bar (the hash never reaches any server). */
 (function(){ try{ const h = new URLSearchParams(location.hash.slice(1)); let got = false;
-  for(const [param, store] of [["abhi","atlas-key-abhi"],["groq","atlas-key-groq"],["claude","atlas-key-claude"],["relay","atlas-abhi-relay"]]){ const v = h.get(param); if(v){ LS.set(store, v.trim()); got = true; } }
-  if(h.get("groq")) LS.set("atlas-provider","groq"); else if(h.get("claude") && !LS.get("atlas-key-groq")) LS.set("atlas-provider","claude");
+  for(const [param, store] of [["gemini","atlas-key-gemini"],["abhi","atlas-key-abhi"],["groq","atlas-key-groq"],["claude","atlas-key-claude"],["relay","atlas-abhi-relay"]]){ const v = h.get(param); if(v){ LS.set(store, v.trim()); got = true; } }
+  if(h.get("gemini")) LS.set("atlas-provider","gemini"); else if(h.get("groq")) LS.set("atlas-provider","groq"); else if(h.get("claude") && !LS.get("atlas-key-groq")) LS.set("atlas-provider","claude");
   if(got){ history.replaceState(null, "", location.pathname + location.search); window.__keysFromLink = true; } }catch(e){} })();
+const defaultProvider = () => LS.get("atlas-provider") || (LS.get("atlas-key-gemini") ? "gemini" : LS.get("atlas-key-groq") ? "groq" : LS.get("atlas-key-claude") ? "claude" : "gemini");
 function keyBrainSetup(){
-  const p = LS.get("atlas-provider") || "groq";
-  if(LS.get("atlas-key-"+p)){ brain = p==="claude" ? claudeBrain : groqBrain; brainTools = true; brainName = "Brain: "+PROVIDERS[p].label; }
+  const p = defaultProvider();
+  if(LS.get("atlas-key-"+p)){ brain = p==="claude" ? claudeBrain : p==="gemini" ? geminiBrain : groqBrain; brainTools = true; brainName = "Brain: "+PROVIDERS[p].label; }
   else brain = null;
   setBrainBadge();
 }
@@ -1092,16 +1230,18 @@ let inClaude = false;
 const dlg = document.getElementById("brainDlg");
 function fillModels(){ const p=document.getElementById("bProv").value, sel=document.getElementById("bModel"), cur=LS.get("atlas-model-"+p)||PROVIDERS[p].models[0];
   sel.innerHTML = PROVIDERS[p].models.map(m=>`<option${m===cur?" selected":""}>${m}</option>`).join("");
-  document.getElementById("bKey").value = ""; document.getElementById("bKey").placeholder = LS.get("atlas-key-"+p) ? "Key saved on this device. Paste to replace." : (p==="groq"?"gsk_…":"sk-ant-…");
+  document.getElementById("bKey").value = ""; document.getElementById("bKey").placeholder = LS.get("atlas-key-"+p) ? "Key saved on this device. Paste to replace." : (p==="groq"?"gsk_…":p==="gemini"?"AIza…":"sk-ant-…");
+  document.getElementById("bGemVoiceL").hidden = p!=="gemini";
+  const gcur = LS.get("atlas-gemini-voice")||GEM_VOICES[0][0]; document.getElementById("bGemVoice").innerHTML = GEM_VOICES.map(([id,n])=>`<option value="${id}"${id===gcur?" selected":""}>${n}</option>`).join("");
   document.getElementById("bXi").value = ""; document.getElementById("bXi").placeholder = LS.get("atlas-key-11labs") ? "Key saved on this device. Paste to replace." : "Optional";
   document.getElementById("bAbhi").value = ""; document.getElementById("bAbhi").placeholder = LS.get("atlas-key-abhi") ? "Key saved on this device. Paste to replace." : "Optional";
   const acur = LS.get("atlas-abhi-voice")||ABHI_VOICES[0][0]; document.getElementById("bAbhiVoice").innerHTML = ABHI_VOICES.map(([id,n])=>`<option value="${id}"${id===acur?" selected":""}>${n}</option>`).join("");
   document.getElementById("bAbhiCustom").value = LS.get("atlas-abhi-custom");
   const vcur = LS.get("atlas-voice-11labs")||XI_VOICES[0][0]; document.getElementById("bVoice").innerHTML = XI_VOICES.map(([id,n])=>`<option value="${id}"${id===vcur?" selected":""}>${n}</option>`).join("");
-  document.getElementById("bHelp").innerHTML = p==="groq" ? 'Get a free key at <a href="https://console.groq.com/keys" target="_blank" rel="noopener">console.groq.com/keys</a>.' : 'Get a key at <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">console.anthropic.com</a> (paid per use).'; }
+  document.getElementById("bHelp").innerHTML = p==="gemini" ? 'Get a free key at <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a>. With Gemini, TALK becomes a live voice conversation.' : p==="groq" ? 'Get a free key at <a href="https://console.groq.com/keys" target="_blank" rel="noopener">console.groq.com/keys</a>.' : 'Get a key at <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">console.anthropic.com</a> (paid per use).'; }
 document.getElementById("brain").addEventListener("click", ()=>{
   if(inClaude){ tip("Inside Claude, Atlas already thinks with your Claude account. No key needed."); return; }
-  document.getElementById("bProv").value = LS.get("atlas-provider")||"groq"; fillModels(); dlg.hidden = false; document.getElementById("bKey").focus(); });
+  document.getElementById("bProv").value = defaultProvider(); fillModels(); dlg.hidden = false; document.getElementById("bKey").focus(); });
 document.getElementById("bProv").addEventListener("change", fillModels);
 document.getElementById("bCancel").addEventListener("click", ()=>{ dlg.hidden = true; });
 document.getElementById("bForget").addEventListener("click", ()=>{ const p=document.getElementById("bProv").value; LS.set("atlas-key-"+p,""); LS.set("atlas-key-11labs",""); LS.set("atlas-key-abhi",""); keyBrainSetup(); dlg.hidden = true; say(`${PROVIDERS[p].label} and voice keys removed from this device. Back to built-in commands.`); });
@@ -1112,9 +1252,9 @@ document.getElementById("bForm").addEventListener("submit", e=>{ e.preventDefaul
   const ak = document.getElementById("bAbhi").value.trim(); if(ak) LS.set("atlas-key-abhi", ak); LS.set("atlas-abhi-voice", document.getElementById("bAbhiVoice").value); LS.set("atlas-abhi-custom", document.getElementById("bAbhiCustom").value.trim());
   if(ak && !k && !xk && LS.get("atlas-key-"+p)){ keyBrainSetup(); dlg.hidden = true; say(`AbhiBots voice connected, ${CFG.user}. This is how I sound now.`); return; }
   if(!LS.get("atlas-key-"+p)){ if(xk||ak){ dlg.hidden = true; say(`Voice connected, ${CFG.user}. Add a Groq or Claude key when you want me to answer anything.`); return; } document.getElementById("bHelp").textContent = "Paste a key first."; return; }
-  LS.set("atlas-provider", p); LS.set("atlas-model-"+p, document.getElementById("bModel").value);
+  LS.set("atlas-provider", p); LS.set("atlas-model-"+p, document.getElementById("bModel").value); LS.set("atlas-gemini-voice", document.getElementById("bGemVoice").value);
   keyBrainSetup(); dlg.hidden = true; turns = [];
-  say(`${PROVIDERS[p].label} brain connected, ${CFG.user}. Ask me anything about the books.`); });
+  say(p==="gemini" ? `Gemini connected, ${CFG.user}. Type a question, or tap TALK for a live voice conversation.` : `${PROVIDERS[p].label} brain connected, ${CFG.user}. Ask me anything about the books.`); });
 
 
 function tip(msg){ const t=document.getElementById("tip"); t.textContent=msg||""; t.hidden=!msg; }
@@ -1305,6 +1445,8 @@ function startListening(){
 function afterSpeech(){ if(talkMode && !listening) setTimeout(startListening, 350); }
 micBtn.textContent = "TALK";
 micBtn.addEventListener("click", ()=>{
+  if(live){ liveStop(); return; }
+  if(!talkMode && geminiLiveOn()){ tip(""); liveStart(); return; }
   if(talkMode){ talkMode = false; micUI(); try{ rec && rec.abort(); }catch(e){} try{ xiRec && xiRec.state==="recording" && xiRec.stop(); }catch(e){} stopSpeech(); tip(""); return; }
   talkMode = true; micUI(); tip(""); stopSpeech(); startListening();
 });
@@ -1401,5 +1543,6 @@ document.getElementById("reply").textContent = "";
 setTimeout(()=>{ document.getElementById("sub").textContent="Initialising…"; }, 0);
 setTimeout(()=>{ say(`Initialising… Systems online. ${greet()}, ${CFG.user}. ${plural(SNAP.pending.length,"decision")} are waiting on you.`.replace("1 decisions are","1 decision is")); setSub(); }, reduceMotion?0:1500);
 </script>
+
 
 </html>
