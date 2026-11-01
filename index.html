@@ -1163,22 +1163,34 @@ const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
 let rec = null, listening = false, talkMode = false, heard = false;
 const micBtn = document.getElementById("mic");
 function micUI(){ micBtn.classList.toggle("on", talkMode); micBtn.textContent = talkMode ? "STOP" : "TALK"; micBtn.setAttribute("aria-pressed", talkMode); }
-function micBlocked(){
+function micBlocked(reason){
   talkMode = false; micUI();
-  tip("The microphone is blocked in this view. Tap the mic on your phone keyboard to dictate, then Send. Atlas will still talk back.");
+  if(inClaude || !window.isSecureContext) tip("The microphone is blocked in this view. Tap the mic on your phone keyboard to dictate, then Send. Atlas will still talk back.");
+  else tip(reason || "Chrome blocked the microphone. Tap the icon left of the address, open Permissions, set Microphone to Allow, then reload the page.");
   document.getElementById("ask").focus();
 }
+const inAppBrowser = /; wv\)|FBAN|FBAV|Instagram|Line\//i.test(navigator.userAgent);
 function startListening(){
-  if(!SR){ micBlocked(); return; }
+  if(!SR){ micBlocked(inAppBrowser ? "This in-app browser can't listen. Open the link in the Chrome app itself (⋮ menu, Open in Chrome)." : "This browser has no speech recognition. Use Chrome on Android, or the keyboard mic."); return; }
   if(listening) return;
-  rec = new SR(); rec.lang = "en-IN"; rec.interimResults = true; rec.continuous = false; heard = false;
-  rec.onstart = ()=>{ listening = true; document.getElementById("ask").placeholder = "Listening…"; document.getElementById("sub").textContent = "Listening"; };
+  rec = new SR(); rec.lang = "en-IN"; rec.interimResults = true; rec.continuous = false; rec.maxAlternatives = 1; heard = false;
+  rec.onstart = ()=>{ listening = true; tip("Listening… speak now."); document.getElementById("ask").placeholder = "Listening…"; document.getElementById("sub").textContent = "Listening"; };
+  rec.onaudiostart = ()=>{ tip("Mic is on. Speak now."); };
+  rec.onspeechstart = ()=>{ tip("Hearing you…"); };
   rec.onresult = ev=>{ const r = ev.results[ev.results.length-1]; document.getElementById("ask").value = r[0].transcript;
-    if(r.isFinal){ heard = true; const v = r[0].transcript; document.getElementById("ask").value = ""; ask(v); } };
-  rec.onerror = ev=>{ if(["not-allowed","service-not-allowed","audio-capture"].includes(ev.error)) micBlocked();
-    else if(ev.error==="no-speech"){ talkMode = false; micUI(); tip("I stopped listening after a quiet spell. Tap TALK to carry on."); } };
-  rec.onend = ()=>{ listening = false; document.getElementById("ask").placeholder = "Ask Atlas…  e.g. “record sale 25000 on credit”"; setSub(); };
-  try{ rec.start(); }catch(e){ micBlocked(); }
+    if(r.isFinal){ heard = true; tip(""); const v = r[0].transcript; document.getElementById("ask").value = ""; ask(v); } };
+  rec.onerror = ev=>{
+    const e = ev.error;
+    if(e==="not-allowed"||e==="service-not-allowed") micBlocked();
+    else if(e==="audio-capture"){ talkMode=false; micUI(); tip("No microphone available. Another app may be using it; close it and tap TALK again."); }
+    else if(e==="network"){ talkMode=false; micUI(); tip("Chrome's speech service couldn't be reached. Check your internet connection and tap TALK again."); }
+    else if(e==="no-speech"){ talkMode=false; micUI(); tip("I didn't hear anything. Tap TALK and speak right after the beep."); }
+    else if(e==="language-not-supported"){ rec.lang="en-US"; tip("Switching to US English recognition. Tap TALK again."); talkMode=false; micUI(); }
+    else if(e!=="aborted"){ talkMode=false; micUI(); tip("Mic error: "+e+". Tap TALK to try again."); }
+  };
+  rec.onend = ()=>{ listening = false; document.getElementById("ask").placeholder = "Ask Atlas…  e.g. “record sale 25000 on credit”"; setSub();
+    if(talkMode && !heard && !speaking){ setTimeout(()=>{ if(talkMode && !listening && !speaking) startListening(); }, 400); } };
+  try{ rec.start(); }catch(err){ micBlocked("The microphone could not start: "+(err && err.message || err)); }
 }
 function afterSpeech(){ if(talkMode && !listening) setTimeout(startListening, 350); }
 micBtn.textContent = "TALK";
