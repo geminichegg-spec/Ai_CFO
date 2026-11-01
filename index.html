@@ -302,6 +302,9 @@ button{cursor:pointer}
     <label>ElevenLabs key (optional, for a natural voice and better listening)<input id="bXi" type="password" autocomplete="off" spellcheck="false"></label>
     <label>Atlas voice<select id="bVoice"></select></label>
     <div class="hint">Get a key at <a href="https://elevenlabs.io/app/settings/api-keys" target="_blank" rel="noopener">elevenlabs.io</a>. It needs the Text to Speech and Speech to Text permissions.</div>
+    <label>AbhiBots key (optional, voice out; used instead of ElevenLabs voice when set)<input id="bAbhi" type="password" autocomplete="off" spellcheck="false"></label>
+    <label>AbhiBots voice<select id="bAbhiVoice"></select></label>
+    <label>Or an AbhiBots / ElevenLabs voice ID from your dashboard<input id="bAbhiCustom" autocomplete="off" spellcheck="false" placeholder="Optional, overrides the list above"></label>
     <div class="row"><button type="button" class="btn" id="bForget">Remove keys</button><span style="flex:1"></span><button type="button" class="btn" id="bCancel">Cancel</button><button class="btn" type="submit">Connect</button></div>
   </form>
 </div>
@@ -504,6 +507,7 @@ const synth = "speechSynthesis" in window ? window.speechSynthesis : null;
 function loadVoices(){ if(synth) voices = synth.getVoices(); }
 if(synth){ loadVoices(); synth.onvoiceschanged = loadVoices; }
 function pickVoice(){
+  const inn = voices.filter(v=>/en[-_]IN/i.test(v.lang)); const im = inn.find(v=>/male|Ravi|Prabhat|Hemant|Madhur/i.test(v.name) && !/female/i.test(v.name)); if(im) return im; if(inn.length) return inn[0];
   const gb = voices.filter(v=>/en-GB/i.test(v.lang));
   return gb.find(v=>/Daniel|Arthur|George|Male|Ryan|Oliver/i.test(v.name)) || gb[0] || voices.find(v=>/^en/i.test(v.lang)) || null;
 }
@@ -1082,6 +1086,9 @@ function fillModels(){ const p=document.getElementById("bProv").value, sel=docum
   sel.innerHTML = PROVIDERS[p].models.map(m=>`<option${m===cur?" selected":""}>${m}</option>`).join("");
   document.getElementById("bKey").value = ""; document.getElementById("bKey").placeholder = LS.get("atlas-key-"+p) ? "Key saved on this device. Paste to replace." : (p==="groq"?"gsk_…":"sk-ant-…");
   document.getElementById("bXi").value = ""; document.getElementById("bXi").placeholder = LS.get("atlas-key-11labs") ? "Key saved on this device. Paste to replace." : "Optional";
+  document.getElementById("bAbhi").value = ""; document.getElementById("bAbhi").placeholder = LS.get("atlas-key-abhi") ? "Key saved on this device. Paste to replace." : "Optional";
+  const acur = LS.get("atlas-abhi-voice")||ABHI_VOICES[0][0]; document.getElementById("bAbhiVoice").innerHTML = ABHI_VOICES.map(([id,n])=>`<option value="${id}"${id===acur?" selected":""}>${n}</option>`).join("");
+  document.getElementById("bAbhiCustom").value = LS.get("atlas-abhi-custom");
   const vcur = LS.get("atlas-voice-11labs")||XI_VOICES[0][0]; document.getElementById("bVoice").innerHTML = XI_VOICES.map(([id,n])=>`<option value="${id}"${id===vcur?" selected":""}>${n}</option>`).join("");
   document.getElementById("bHelp").innerHTML = p==="groq" ? 'Get a free key at <a href="https://console.groq.com/keys" target="_blank" rel="noopener">console.groq.com/keys</a>.' : 'Get a key at <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">console.anthropic.com</a> (paid per use).'; }
 document.getElementById("brain").addEventListener("click", ()=>{
@@ -1089,12 +1096,14 @@ document.getElementById("brain").addEventListener("click", ()=>{
   document.getElementById("bProv").value = LS.get("atlas-provider")||"groq"; fillModels(); dlg.hidden = false; document.getElementById("bKey").focus(); });
 document.getElementById("bProv").addEventListener("change", fillModels);
 document.getElementById("bCancel").addEventListener("click", ()=>{ dlg.hidden = true; });
-document.getElementById("bForget").addEventListener("click", ()=>{ const p=document.getElementById("bProv").value; LS.set("atlas-key-"+p,""); LS.set("atlas-key-11labs",""); keyBrainSetup(); dlg.hidden = true; say(`${PROVIDERS[p].label} and ElevenLabs keys removed from this device. Back to built-in commands.`); });
+document.getElementById("bForget").addEventListener("click", ()=>{ const p=document.getElementById("bProv").value; LS.set("atlas-key-"+p,""); LS.set("atlas-key-11labs",""); LS.set("atlas-key-abhi",""); keyBrainSetup(); dlg.hidden = true; say(`${PROVIDERS[p].label}, ElevenLabs and AbhiBots keys removed from this device. Back to built-in commands.`); });
 document.getElementById("bForm").addEventListener("submit", e=>{ e.preventDefault();
   const p=document.getElementById("bProv").value, k=document.getElementById("bKey").value.trim();
   if(k) LS.set("atlas-key-"+p, k);
   const xk = document.getElementById("bXi").value.trim(); if(xk) LS.set("atlas-key-11labs", xk); LS.set("atlas-voice-11labs", document.getElementById("bVoice").value);
-  if(!LS.get("atlas-key-"+p)){ if(xk){ dlg.hidden = true; say(`ElevenLabs voice connected, ${CFG.user}. Add a Groq or Claude key when you want me to answer anything.`); return; } document.getElementById("bHelp").textContent = "Paste a key first."; return; }
+  const ak = document.getElementById("bAbhi").value.trim(); if(ak) LS.set("atlas-key-abhi", ak); LS.set("atlas-abhi-voice", document.getElementById("bAbhiVoice").value); LS.set("atlas-abhi-custom", document.getElementById("bAbhiCustom").value.trim());
+  if(ak && !k && !xk && LS.get("atlas-key-"+p)){ keyBrainSetup(); dlg.hidden = true; say(`AbhiBots voice connected, ${CFG.user}. This is how I sound now.`); return; }
+  if(!LS.get("atlas-key-"+p)){ if(xk||ak){ dlg.hidden = true; say(`Voice connected, ${CFG.user}. Add a Groq or Claude key when you want me to answer anything.`); return; } document.getElementById("bHelp").textContent = "Paste a key first."; return; }
   LS.set("atlas-provider", p); LS.set("atlas-model-"+p, document.getElementById("bModel").value);
   keyBrainSetup(); dlg.hidden = true; turns = [];
   say(`${PROVIDERS[p].label} brain connected, ${CFG.user}. Ask me anything about the books.`); });
@@ -1108,13 +1117,13 @@ function setReply(text, done){
 /* speech queue: speak whole sentences while the answer streams */
 let utterLeft = 0;
 function speakChunk(t, last){
-  if(voiceOn && t.trim() && xiKey()){ xiSpeak(t, last); return; }
+  if(voiceOn && t.trim() && (abhiKey() || xiKey())){ xiSpeak(t, last); return; }
   browserSpeak(t, last);
 }
 function browserSpeak(t, last){
   if(!voiceOn || !synth || !t.trim()){ if(last && utterLeft===0){ speaking=false; afterSpeech(); } return; }
   const u = new SpeechSynthesisUtterance(speakable(t)); const v = pickVoice(); if(v) u.voice = v;
-  u.lang="en-GB"; u.pitch=.82; u.rate=1; utterLeft++; synthActive=true; speaking=true;
+  u.lang=(pickVoice()||{}).lang||"en-GB"; u.pitch=.82; u.rate=1; utterLeft++; synthActive=true; speaking=true;
   u.onboundary=()=>{ level=1; };
   u.onend=u.onerror=()=>{ utterLeft=Math.max(0,utterLeft-1); if(utterLeft===0){ synthActive=false; speaking=false; if(last) afterSpeech(); } };
   try{ synth.speak(u); }catch(e){ utterLeft--; }
@@ -1167,16 +1176,45 @@ let xiQueue = Promise.resolve(), xiAudio = null, xiGen = 0, xiPending = 0;
 function xiStop(){ xiGen++; xiPending = 0; if(xiAudio){ try{ xiAudio.pause(); }catch(e){} xiAudio = null; } }
 function xiSpeak(text, last){
   const gen = xiGen; xiPending++;
-  const clip = fetch(`${XI}/text-to-speech/${LS.get("atlas-voice-11labs")||XI_VOICES[0][0]}?output_format=mp3_44100_128`,{method:"POST",
+  const clip = abhiKey() ? abhiClip(text) : fetch(`${XI}/text-to-speech/${LS.get("atlas-voice-11labs")||XI_VOICES[0][0]}?output_format=mp3_44100_128`,{method:"POST",
       headers:{"xi-api-key":xiKey(),"Content-Type":"application/json"},
       body:JSON.stringify({text:speakable(text), model_id:"eleven_flash_v2_5"})})
     .then(r=>{ if(r.status===401) throw new Error("key"); if(!r.ok) throw new Error("http "+r.status); return r.blob(); });
   xiQueue = xiQueue.then(async ()=>{
-    let blob; try{ blob = await clip; }catch(e){ if(gen===xiGen) tip(e.message==="key" ? "ElevenLabs rejected the key. Tap the Brain badge to fix it." : "ElevenLabs voice failed, using the browser voice."); if(gen===xiGen && e.message!=="key") browserSpeak(text); return; }
+    let blob; try{ blob = await clip; }catch(e){ if(gen===xiGen) tip(e.message==="key" ? (abhiKey()?"AbhiBots":"ElevenLabs")+" rejected the key. Tap the Brain badge to fix it." : (abhiKey() ? "AbhiBots voice failed ("+e.message+"), so the browser voice is used." : "ElevenLabs voice failed, using the browser voice.")); if(gen===xiGen && e.message!=="key") browserSpeak(text); return; }
     if(gen!==xiGen) return;
     await new Promise(res=>{ const url = URL.createObjectURL(blob); const a = new Audio(url); xiAudio = a; speaking = true;
       const done = ()=>{ URL.revokeObjectURL(url); res(); }; a.onended = done; a.onerror = done; a.play().catch(done); });
   }).finally(()=>{ if(gen!==xiGen) return; xiPending = Math.max(0,xiPending-1); if(xiPending===0){ speaking = false; xiAudio = null; if(last) afterSpeech(); } });
+}
+
+
+/* AbhiBots text-to-speech (voice out only). Docs: app.abhibots.com/docs/tts */
+const ABHI_VOICES = [
+  ["google|en-IN-Neural2-B","Indian English male (Neural2-B)"],
+  ["google|en-IN-Neural2-C","Indian English male (Neural2-C)"],
+  ["google|en-IN-Wavenet-C","Indian English male (WaveNet-C)"],
+  ["google|hi-IN-Neural2-B","Hindi male (Neural2-B)"],
+  ["gemini|Charon","Gemini male, informative (Charon)"],
+];
+const abhiKey = () => (!inClaude && LS.get("atlas-key-abhi")) || "";
+async function abhiClip(text){
+  const custom = LS.get("atlas-abhi-custom").trim();
+  const [provider, voiceId] = custom ? ["eleven", custom] : (LS.get("atlas-abhi-voice") || ABHI_VOICES[0][0]).split("|");
+  const body = {text: speakable(text).slice(0,5000), voiceId, provider};
+  if(provider==="eleven") body.voice_settings = {model_id:"eleven_multilingual_v2"};
+  let r;
+  try{ r = await fetch("https://app.abhibots.com/api/tts/generate",{method:"POST",headers:{"X-API-Key":abhiKey(),"Content-Type":"application/json"},body:JSON.stringify(body)}); }
+  catch(e){ throw new Error("the page could not reach AbhiBots; they may not allow calls from websites"); }
+  if(r.status===401) throw new Error("key");
+  if(r.status===402) throw new Error("out of AbhiBots credits");
+  const ct = r.headers.get("content-type")||"";
+  if(!r.ok){ let d=""; try{ d = ct.includes("json") ? JSON.stringify((await r.json()).detail||"") : (await r.text()).slice(0,120); }catch(e){} throw new Error("HTTP "+r.status+(d?": "+d:"")); }
+  if(ct.includes("json")){ const j = await r.json(); const d = j.data||j; const url = d.audio_url||d.audioUrl||d.url||d.result;
+    if(url){ const a = await fetch(url); if(!a.ok) throw new Error("audio download failed"); return a.blob(); }
+    const b64 = d.audio||d.audio_base64; if(b64){ const bin = atob(b64); const u8 = new Uint8Array(bin.length); for(let i=0;i<bin.length;i++) u8[i]=bin.charCodeAt(i); return new Blob([u8],{type:"audio/mpeg"}); }
+    throw new Error("no audio in the reply"); }
+  return r.blob();
 }
 
 /* recording + speech-to-text */
