@@ -178,6 +178,13 @@ button{cursor:pointer}
 .flow{display:flex;gap:6px;flex-wrap:wrap;align-items:center;justify-content:center;font-family:var(--f-display);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--mute);margin:2px 0 12px}
 .flow b{color:var(--cyan);font-weight:600}
 .split{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+.dlg{margin:auto;width:100%;max-width:440px;background:var(--panel-solid);border:1px solid var(--line-strong);padding:16px;display:grid;gap:12px;box-shadow:0 0 60px rgba(77,225,255,.15)}
+.dlg h3{margin:0;font-family:var(--f-display);letter-spacing:.24em;font-size:13px;color:var(--cyan)}
+.dlg p{margin:0;color:var(--mute);font-size:13px;line-height:1.45}
+.dlg label{display:grid;gap:5px;font-family:var(--f-display);font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--mute)}
+.dlg input,.dlg select{background:#04101f;border:1px solid var(--line-strong);padding:9px 10px;border-radius:2px;font-family:var(--f-body);font-size:14px;text-transform:none;letter-spacing:0;width:100%}
+.dlg .hint{font-size:12.5px;color:var(--mute)} .dlg .hint a{color:var(--cyan)}
+.dlg .row{display:flex;gap:8px;flex-wrap:wrap}
 .toast{position:fixed;left:50%;bottom:calc(18px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--panel-solid);border:1px solid var(--cyan);padding:8px 14px;font-size:13px;z-index:30;max-width:calc(100% - 32px)}
 
 @media (max-width:980px){
@@ -217,7 +224,7 @@ button{cursor:pointer}
       <span class="clock" id="clock">--:--:--</span>
       <span class="date" id="date"></span>
       <button class="badge" id="voice" aria-pressed="true"><span class="d"></span>Voice: ON</button>
-      <span class="badge off" id="brain" title="Who answers open questions"><span class="d"></span>Brain: built-in</span>
+      <button class="badge off" id="brain" title="Choose the AI brain"><span class="d"></span>Brain: built-in</button>
       <button class="btn" id="openBooks">Books</button>
     </div>
   </header>
@@ -282,6 +289,18 @@ button{cursor:pointer}
     </div>
     <div class="sheet-b" id="sheetBody"></div>
   </div>
+</div>
+
+<div class="sheet" id="brainDlg" hidden role="dialog" aria-modal="true" aria-label="AI brain settings">
+  <form class="dlg" id="bForm">
+    <h3>AI BRAIN</h3>
+    <p>Connect a model so Atlas can answer any question about the books. Your key is saved only in this browser on this device.</p>
+    <label>Provider<select id="bProv"><option value="groq">Groq (free, fastest)</option><option value="claude">Claude API</option></select></label>
+    <label>API key<input id="bKey" type="password" autocomplete="off" spellcheck="false"></label>
+    <label>Model<select id="bModel"></select></label>
+    <div class="hint" id="bHelp"></div>
+    <div class="row"><button type="button" class="btn" id="bForget">Remove key</button><span style="flex:1"></span><button type="button" class="btn" id="bCancel">Cancel</button><button class="btn" type="submit">Connect</button></div>
+  </form>
 </div>
 
 <script>
@@ -895,7 +914,7 @@ document.getElementById("voice").addEventListener("click", e=>{ voiceOn=!voiceOn
 document.getElementById("openBooks").addEventListener("click", ()=>openBooks());
 document.getElementById("closeBooks").addEventListener("click", closeBooks);
 document.getElementById("resetDemo").addEventListener("click", resetDemo);
-document.addEventListener("keydown", e=>{ if(e.key==="Escape" && !books.hidden) closeBooks(); });
+document.addEventListener("keydown", e=>{ if(e.key!=="Escape") return; const d=document.getElementById("brainDlg"); if(!d.hidden){ d.hidden=true; return; } if(!books.hidden) closeBooks(); });
 document.getElementById("tabs").addEventListener("click", e=>{ const b=e.target.closest(".tab"); if(b){ tab=b.dataset.tab; renderTab(); } });
 books.addEventListener("click", e=>{ if(e.target===books) closeBooks(); });
 document.getElementById("sheetBody").addEventListener("click", e=>{
@@ -965,9 +984,125 @@ const TOOLS = [
      CAPTURE=[]; try{ run(c); } finally { var out=CAPTURE; CAPTURE=null; } return out.join(" ") || "Done."; }},
 ];
 
-function setBrainBadge(){ const b=document.getElementById("brain"); b.classList.toggle("off",!brain); b.lastChild.textContent = brain ? "Brain: Claude" : "Brain: built-in"; }
-(async()=>{ try{ if(window.claude && window.claude.use){ const sm = await window.claude.use("sample");
-  if(sm){ const lim = await sm.limits().catch(()=>null); brainTools = !!(lim && lim.tools); brain = sm; setBrainBadge(); } } }catch(e){} })();
+function setBrainBadge(){ const b=document.getElementById("brain"); b.classList.toggle("off",!brain);
+  b.lastChild.textContent = !brain ? "Brain: built-in" : brainName; }
+let brainName = "Brain: Claude";
+
+/* --- Key-based brain for the hosted page (Groq or Claude API). The key lives only in this browser's storage. --- */
+const LS = { get(k){ try{ return localStorage.getItem(k)||""; }catch(e){ return ""; } }, set(k,v){ try{ v ? localStorage.setItem(k,v) : localStorage.removeItem(k); }catch(e){} } };
+const PROVIDERS = {
+  groq:   {label:"Groq", models:["llama-3.3-70b-versatile","openai/gpt-oss-120b","openai/gpt-oss-20b","llama-3.1-8b-instant"]},
+  claude: {label:"Claude", models:["claude-opus-5-5","claude-sonnet-5-5","claude-haiku-5-5"]},
+};
+const brainErr = (code, message) => ({code, message});
+const toolDefs = tools => (tools||[]).map(t=>({name:t.name, description:t.description, schema:t.inputSchema||{type:"object",properties:{}}}));
+async function runTool(tools, name, input, signal){
+  const t = (tools||[]).find(x=>x.name===name); if(!t) throw new Error("Unknown tool "+name);
+  const out = await t.execute(input||{}, {signal}); return typeof out==="string" ? out : JSON.stringify(out);
+}
+
+async function groqBrain(msgs, {onText, signal, tools}={}){
+  const key = LS.get("atlas-key-groq"), model = LS.get("atlas-model-groq") || PROVIDERS.groq.models[0];
+  const messages = [{role:"system",content:msgs[0].content}, ...msgs.slice(1).map(m=>({role:m.role,content:m.content}))];
+  const defs = toolDefs(tools).map(t=>({type:"function",function:{name:t.name,description:t.description,parameters:t.schema}}));
+  let text = "";
+  for(let round=0; round<5; round++){
+    let res;
+    try{
+      res = await fetch("https://api.groq.com/openai/v1/chat/completions",{method:"POST",signal,
+        headers:{"Content-Type":"application/json","Authorization":"Bearer "+key},
+        body:JSON.stringify({model, messages, tools:defs.length?defs:undefined, tool_choice:defs.length?"auto":undefined, temperature:0.4, max_tokens:1024})});
+    }catch(e){ if(signal && signal.aborted) throw brainErr("cancelled"); throw brainErr("upstream_error", String(e)); }
+    if(res.status===401||res.status===403) throw brainErr("bad_key","Groq rejected the key");
+    if(res.status===429) throw brainErr("rate_limited","Groq rate limit");
+    if(!res.ok){ const b = await res.text().catch(()=>""); throw brainErr(res.status===404||/model/i.test(b)?"bad_model":"upstream_error", b.slice(0,200)); }
+    const data = await res.json(); const msg = data.choices && data.choices[0] && data.choices[0].message || {};
+    if(msg.content && msg.content.trim()){ text = text ? text+" "+msg.content.trim() : msg.content.trim(); onText && onText({text}); }
+    const calls = msg.tool_calls || [];
+    if(!calls.length) break;
+    messages.push({role:"assistant", content:msg.content||"", tool_calls:calls});
+    for(const c of calls){
+      let out; try{ out = await runTool(tools, c.function.name, JSON.parse(c.function.arguments||"{}"), signal); }catch(e){ out = "Error: "+(e.message||e); }
+      messages.push({role:"tool", tool_call_id:c.id, content:out});
+    }
+  }
+  if(!text) throw brainErr("empty_completion");
+  return {text};
+}
+
+let AnthropicSDK = null;
+async function claudeBrain(msgs, {onText, signal, tools}={}){
+  if(!AnthropicSDK){ try{ AnthropicSDK = (await import("https://cdn.jsdelivr.net/npm/@anthropic-ai/sdk@0.135.0/+esm")).default; }catch(e){ throw brainErr("upstream_error","Could not load the Claude SDK"); } }
+  const Anthropic = AnthropicSDK;
+  const model = LS.get("atlas-model-claude") || PROVIDERS.claude.models[0];
+  const client = new Anthropic({apiKey: LS.get("atlas-key-claude"), dangerouslyAllowBrowser: true});
+  // merge consecutive same-role turns so roles alternate
+  const messages = [];
+  for(const m of msgs.slice(1)){ const last = messages[messages.length-1]; if(last && last.role===m.role) last.content += "\n\n"+m.content; else messages.push({role:m.role, content:m.content}); }
+  const defs = toolDefs(tools).map(t=>({name:t.name, description:t.description, input_schema:t.schema}));
+  const fallback = model!=="claude-haiku-5-5";
+  let text = "";
+  for(let round=0; round<5; round++){
+    let res;
+    try{
+      res = await client.beta.messages.create({model, max_tokens:16000, system:msgs[0].content, messages, tools:defs,
+        output_config:{effort:"low"}, ...(fallback ? {betas:["server-side-fallback-2026-07-01"], fallbacks:"default"} : {})}, {signal});
+    }catch(e){
+      if(signal && signal.aborted) throw brainErr("cancelled");
+      if(e instanceof Anthropic.AuthenticationError || e instanceof Anthropic.PermissionDeniedError) throw brainErr("bad_key","Claude rejected the key");
+      if(e instanceof Anthropic.RateLimitError) throw brainErr("rate_limited","Claude rate limit");
+      if(e instanceof Anthropic.NotFoundError) throw brainErr("bad_model","Model not found");
+      throw brainErr("upstream_error", String(e && e.message || e));
+    }
+    const t = res.content.filter(b=>b.type==="text").map(b=>b.text).join("").trim();
+    if(t){ text = text ? text+" "+t : t; onText && onText({text}); }
+    if(res.stop_reason==="refusal") break;
+    const uses = res.content.filter(b=>b.type==="tool_use");
+    if(res.stop_reason!=="tool_use" || !uses.length) break;
+    messages.push({role:"assistant", content:res.content});
+    const results = [];
+    for(const u of uses){ try{ results.push({type:"tool_result", tool_use_id:u.id, content: await runTool(tools, u.name, u.input, signal)}); }
+      catch(e){ results.push({type:"tool_result", tool_use_id:u.id, is_error:true, content:String(e.message||e)}); } }
+    messages.push({role:"user", content:results});
+  }
+  if(!text) throw brainErr("empty_completion");
+  return {text};
+}
+function keyBrainSetup(){
+  const p = LS.get("atlas-provider") || "groq";
+  if(LS.get("atlas-key-"+p)){ brain = p==="claude" ? claudeBrain : groqBrain; brainTools = true; brainName = "Brain: "+PROVIDERS[p].label; }
+  else brain = null;
+  setBrainBadge();
+}
+let inClaude = false;
+(async()=>{
+  if(window.claude && window.claude.use){
+    try{ const sm = await window.claude.use("sample");
+      if(sm){ inClaude = true; const lim = await sm.limits().catch(()=>null); brainTools = !!(lim && lim.tools); brain = sm; brainName = "Brain: Claude"; setBrainBadge(); return; } }catch(e){}
+  }
+  keyBrainSetup();
+})();
+
+/* Brain settings dialog */
+const dlg = document.getElementById("brainDlg");
+function fillModels(){ const p=document.getElementById("bProv").value, sel=document.getElementById("bModel"), cur=LS.get("atlas-model-"+p)||PROVIDERS[p].models[0];
+  sel.innerHTML = PROVIDERS[p].models.map(m=>`<option${m===cur?" selected":""}>${m}</option>`).join("");
+  document.getElementById("bKey").value = ""; document.getElementById("bKey").placeholder = LS.get("atlas-key-"+p) ? "Key saved on this device. Paste to replace." : (p==="groq"?"gsk_…":"sk-ant-…");
+  document.getElementById("bHelp").innerHTML = p==="groq" ? 'Get a free key at <a href="https://console.groq.com/keys" target="_blank" rel="noopener">console.groq.com/keys</a>.' : 'Get a key at <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">console.anthropic.com</a> (paid per use).'; }
+document.getElementById("brain").addEventListener("click", ()=>{
+  if(inClaude){ tip("Inside Claude, Atlas already thinks with your Claude account. No key needed."); return; }
+  document.getElementById("bProv").value = LS.get("atlas-provider")||"groq"; fillModels(); dlg.hidden = false; document.getElementById("bKey").focus(); });
+document.getElementById("bProv").addEventListener("change", fillModels);
+document.getElementById("bCancel").addEventListener("click", ()=>{ dlg.hidden = true; });
+document.getElementById("bForget").addEventListener("click", ()=>{ const p=document.getElementById("bProv").value; LS.set("atlas-key-"+p,""); keyBrainSetup(); dlg.hidden = true; say(`${PROVIDERS[p].label} key removed from this device. Back to built-in commands.`); });
+document.getElementById("bForm").addEventListener("submit", e=>{ e.preventDefault();
+  const p=document.getElementById("bProv").value, k=document.getElementById("bKey").value.trim();
+  if(k) LS.set("atlas-key-"+p, k);
+  if(!LS.get("atlas-key-"+p)){ document.getElementById("bHelp").textContent = "Paste a key first."; return; }
+  LS.set("atlas-provider", p); LS.set("atlas-model-"+p, document.getElementById("bModel").value);
+  keyBrainSetup(); dlg.hidden = true; turns = [];
+  say(`${PROVIDERS[p].label} brain connected, ${CFG.user}. Ask me anything about the books.`); });
+
 
 function tip(msg){ const t=document.getElementById("tip"); t.textContent=msg||""; t.hidden=!msg; }
 function setReply(text, done){
@@ -1014,7 +1149,10 @@ async function ask(raw){
     if(e && e.code==="cancelled") return;
     speaking = false;
     if(e && ["not_granted","sampling_disabled","not_declared","capability_disabled","capability_removed"].includes(e.code)){ brain=null; setBrainBadge(); }
-    else if(e && e.code==="rate_limited") tip("Claude is busy for a moment, so the built-in answer is shown.");
+    else if(e && e.code==="rate_limited") tip("The AI brain is busy for a moment, so the built-in answer is shown.");
+    else if(e && e.code==="bad_key") tip("Your API key was rejected. Tap the Brain badge to paste a fresh key.");
+    else if(e && e.code==="bad_model") tip("That model isn't available on your key. Tap the Brain badge and pick another model.");
+    else if(e && e.code!=="empty_completion") tip("The AI brain didn't answer, so the built-in answer is shown.");
     run(v); afterSpeechIfSilent();
   }finally{ if(brainCtl===ctl) brainCtl=null; setSub(); }
 }

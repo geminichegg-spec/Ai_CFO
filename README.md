@@ -23,3 +23,7 @@ All figures are example data for a fictional company, Orbit Traders. "Reset demo
 
 ## Live page
 https://geminichegg-spec.github.io/Ai_CFO/ (open in Chrome, tap TALK, allow the microphone)
+
+## AI brain (answer any question)
+Tap the **Brain** badge in the top bar, pick **Groq** (free) or **Claude API**, paste your key and tap Connect.
+The key is stored only in your browser on that device; it is never committed to this repo.
